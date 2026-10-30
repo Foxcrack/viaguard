@@ -112,3 +112,29 @@ All development decisions, milestones, testing notes, and command outputs during
 
 ### Next Steps
 - Phase 4: Frontend Road Damage Module + Geolocation Map (`apps/web` with Vite, React Router, Tailwind CSS, Leaflet, and React Bits modern components).
+
+---
+
+## 2026-10-29 – Phase 4: Frontend Road Module & Geospatial Map
+
+### What was built
+- Implemented responsive modern dark-mode frontend in `apps/web` with Vite, React 18, React Router, and Tailwind CSS:
+  - `HomePage.tsx`: Hero section featuring `BlurText` headline, `ShinyText` animated badges, key metric counters (`CountUp`), spotlight module cards (`SpotlightCard`), and recent audit preview grid.
+  - `RoadPage.tsx`: Road Damage inspection module with drag-and-drop file upload, bundled sample picker pills, geolocation coordinator (EXIF GPS auto-detection, device GPS trigger, and interactive map pin placement), live SSE progress stepper, and structured report viewer.
+  - `MaskOverlayViewer.tsx`: High-performance vector mask rendering layer overlaying SAM 3.1 segmentation paths and bounding boxes with interactive hover cross-highlighting, concept color coding, and toggles for masks, boxes, and labels.
+  - `InspectionMap.tsx`: Interactive OpenStreetMap viewer using Leaflet and React-Leaflet with custom SVG severity-coded pins (green for low, amber for medium, red for high, dark red for critical), thumbnail popups, and click-to-pin geolocation selection.
+  - `MapPage.tsx`: Full-page geospatial map with live severity and module filters, and live statistics banner.
+  - `ReportsPage.tsx` & `ReportDetailPage.tsx`: Filterable archive grid and dedicated report view with print-to-PDF formatting and raw JSON export.
+  - Integrated React Bits components (`SpotlightCard`, `BlurText`, `CountUp`, `ShinyText`, `AnimatedList`) respecting `prefers-reduced-motion`.
+
+### Verification Output
+- `pnpm build`: Succeeded in 2.53s with clean asset chunking.
+- `pnpm typecheck`: Clean across all packages.
+- Tested responsive layout on mobile viewports (<640px) and desktop (>1024px).
+
+### Decisions
+- Leaflet marker icons are dynamically constructed via lightweight SVG `DivIcon` elements to avoid asset path resolution errors across production bundlers and provide instantaneous color-coded rendering.
+- Relative damage measurements are highlighted in both the UI and exported summaries with an explicit disclaimer noting they represent sensor frame coverage.
+
+### Next Steps
+- Phase 5: Construction Progress Module (Before/After side-by-side comparison, draggable comparison slider, comparative diff table, and progression/deterioration reporting).
