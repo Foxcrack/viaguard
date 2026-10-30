@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { app } from "../src/index.js";
 import { storage } from "../src/storage.js";
-import { InspectionReport } from "@viaguard/core";
+import { applyPrivacyBlur } from "../src/pipeline.js";
+import sharp from "sharp";
+import { InspectionReport, DamageFinding } from "@viaguard/core";
 
 describe("Viaguard Backend API Endpoints", () => {
   beforeAll(async () => {
@@ -107,5 +109,33 @@ describe("Viaguard Backend API Endpoints", () => {
   it("GET /api/reports/:id returns 404 for unknown report", async () => {
     const res = await app.request("/api/reports/nonexistent-id-999");
     expect(res.status).toBe(404);
+  });
+
+  it("applyPrivacyBlur blurs sensitive coordinates without altering dimensions", async () => {
+    const rawBuffer = await sharp({
+      create: {
+        width: 400,
+        height: 300,
+        channels: 3,
+        background: { r: 120, g: 120, b: 120 },
+      },
+    })
+      .jpeg()
+      .toBuffer();
+
+    const privacyFinding: DamageFinding = {
+      id: "privacy-license-1",
+      concept: "license plate",
+      confidence: 0.95,
+      relativeAreaPercent: 2.0,
+      boundingBox: { x1: 50, y1: 50, x2: 150, y2: 100, width: 100, height: 50 },
+    };
+
+    const blurredBuffer = await applyPrivacyBlur(rawBuffer, [privacyFinding]);
+    expect(blurredBuffer.length).toBeGreaterThan(0);
+
+    const meta = await sharp(blurredBuffer).metadata();
+    expect(meta.width).toBe(400);
+    expect(meta.height).toBe(300);
   });
 });

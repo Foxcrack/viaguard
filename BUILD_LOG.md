@@ -162,3 +162,25 @@ All development decisions, milestones, testing notes, and command outputs during
 
 ### Next Steps
 - Phase 6: Polish, robustness, zero-damage resilience, error boundaries, demo mode, and accessibility audit.
+
+---
+
+## 2026-10-29 – Phase 6: Polish, Robustness, and Privacy Blur
+
+### What was built
+- Implemented offline-resilient Demo Mode in `apps/api/src/demo-cache.ts` providing pre-cached real inspection responses for all bundled demo samples (`road-sample-pothole.jpg`, `road-sample-cracks.jpg`, and comparative construction pair).
+- Added `applyPrivacyBlur()` in `apps/api/src/pipeline.ts` providing automated privacy protection: segments and Gaussian-blurs detected pedestrians and license plates prior to asset persistence.
+- Added privacy protection toggle in `RoadPage.tsx` enabled by default for civic privacy-by-design compliance.
+- Ensured graceful handling of zero-damage cases: clean green status reporting zero roadbed defects without exceptions.
+- Audited accessibility: semantic HTML elements, high-contrast dark theme, keyboard navigability, minimum 44px tap targets, and `prefers-reduced-motion` compliance.
+
+### Verification Output
+- `pnpm test`: 21 tests passing (13 core unit tests + 8 API and pipeline tests).
+- `pnpm build`: Completed cleanly in 2.55s.
+- `pnpm analyze:sample`: Ran end-to-end on sample road photos, generating full structured reports.
+
+### Decisions
+- Default application mode remains strictly live (calling Meta Model API). Demo Mode activates seamlessly as a zero-downtime fallback when offline or evaluating sample images without live API credentials.
+
+### Next Steps
+- Phase 7: Comprehensive Documentation, architecture Mermaid diagrams, `SUBMISSION.md`, demo video script with timestamps, and final verification.

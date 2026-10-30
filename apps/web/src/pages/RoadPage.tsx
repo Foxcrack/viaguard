@@ -30,6 +30,7 @@ export const RoadPage: React.FC = () => {
   const [report, setReport] = useState<InspectionReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [privacyBlur, setPrivacyBlur] = useState(true);
 
   useEffect(() => {
     api.getSamples().then((all) => {
@@ -180,6 +181,22 @@ export const RoadPage: React.FC = () => {
                   />
                 </label>
               )}
+
+              {/* Privacy Blur Toggle */}
+              <div className="pt-2 border-t border-border flex items-center justify-between text-xs text-slate-400">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={privacyBlur}
+                    onChange={(e) => setPrivacyBlur(e.target.checked)}
+                    className="rounded border-border bg-slate-900 text-blue-500 focus:ring-blue-500"
+                  />
+                  <span className="font-medium text-slate-300">
+                    Privacy Protection (Auto-blur pedestrians &amp; license plates)
+                  </span>
+                </label>
+                <span className="text-[11px] text-emerald-400 font-semibold">Enabled</span>
+              </div>
 
               {/* Sample Images Quick Selector */}
               <div className="pt-2">

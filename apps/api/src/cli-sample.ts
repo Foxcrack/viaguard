@@ -7,8 +7,18 @@ import sharp from "sharp";
 import { runRoadPipeline } from "./pipeline.js";
 
 async function getOrGenerateSampleBuffer(imageArg?: string): Promise<{ buffer: Buffer; name: string }> {
-  if (imageArg && fs.existsSync(imageArg)) {
-    return { buffer: fs.readFileSync(imageArg), name: path.basename(imageArg) };
+  if (imageArg) {
+    const candidates = [
+      imageArg,
+      path.resolve(imageArg),
+      path.resolve(process.cwd(), imageArg),
+      path.resolve(process.cwd(), "..", "..", imageArg),
+    ];
+    for (const cand of candidates) {
+      if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+        return { buffer: fs.readFileSync(cand), name: path.basename(cand) };
+      }
+    }
   }
 
   // Look in apps/web/public/samples
@@ -17,6 +27,11 @@ async function getOrGenerateSampleBuffer(imageArg?: string): Promise<{ buffer: B
     const files = fs
       .readdirSync(samplesDir)
       .filter((f) => /\.(jpe?g|png|webp)$/i.test(f));
+    const roadFile = files.find((f) => f.includes("pothole") || f.includes("road"));
+    if (roadFile) {
+      const samplePath = path.join(samplesDir, roadFile);
+      return { buffer: fs.readFileSync(samplePath), name: roadFile };
+    }
     if (files.length > 0) {
       const samplePath = path.join(samplesDir, files[0]);
       return { buffer: fs.readFileSync(samplePath), name: files[0] };
@@ -51,7 +66,7 @@ async function getOrGenerateSampleBuffer(imageArg?: string): Promise<{ buffer: B
 }
 
 async function main() {
-  const imageArg = process.argv[2];
+  const imageArg = process.argv.slice(2).find((arg) => !arg.startsWith("-"));
   console.log("==================================================");
   console.log("      Viaguard Pipeline CLI Sample Runner        ");
   console.log("==================================================");
