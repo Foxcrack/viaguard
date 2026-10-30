@@ -8,9 +8,14 @@ import { SectionReveal } from "@/components/SectionReveal";
 import { InspectionProgressStepper } from "@/components/InspectionProgressStepper";
 import { useMotionPreferences } from "@/hooks/useMotionPreferences";
 import { api, DemoSample, ProgressState } from "../api/client.ts";
-import { InspectionReport } from "@viaguard/core";
+import {
+  InspectionReport,
+  REPORT_LIMITATIONS_TEXT,
+  normalizeInspectionReport,
+} from "@viaguard/core";
 import { MaskOverlayViewer } from "../components/MaskOverlayViewer.tsx";
 import { SeverityBreakdownCard } from "../components/SeverityBreakdownCard.tsx";
+import { DualSignalCards } from "../components/DualSignalCards.tsx";
 import { InspectionMap } from "../components/InspectionMap.tsx";
 import { useDemoMode, CachedReplayBanner } from "../context/DemoModeContext.tsx";
 import {
@@ -130,15 +135,20 @@ export const RoadPage: React.FC = () => {
     setHoveredFindingId(null);
   };
 
+  const normReport = useMemo(
+    () => (report ? normalizeInspectionReport(report) : null),
+    [report]
+  );
+
   const animatedFindingItems: AnimatedListEntry[] = useMemo(() => {
-    if (!report) return [];
-    return report.findings.map((f, idx) => ({
+    if (!normReport) return [];
+    return normReport.findings.map((f, idx) => ({
       id: f.id,
       title: `${idx + 1}. ${f.concept}`,
       description: `Relative Area: ${f.relativeAreaPercent}%`,
       meta: `${(f.confidence * 100).toFixed(0)}%`,
     }));
-  }, [report]);
+  }, [normReport]);
 
   return (
     <div className="space-y-8 py-2 max-w-5xl mx-auto">
@@ -168,7 +178,7 @@ export const RoadPage: React.FC = () => {
       </div>
 
       {/* Main Flow: Upload vs Analysis Results */}
-      {!report ? (
+      {!normReport ? (
         <SectionReveal>
           <div className="grid md:grid-cols-3 gap-8">
             {/* Left Column: Image Upload & Preview */}
@@ -395,54 +405,35 @@ export const RoadPage: React.FC = () => {
         </SectionReveal>
       ) : (
         /* Results View */
-        <SectionReveal className="space-y-8">
-          <CachedReplayBanner active={Boolean(report.isCached) && !demoMode} compact />
+        <SectionReveal className="space-y-6">
+          <CachedReplayBanner active={Boolean(normReport.isCached) && !demoMode} compact />
 
-          {/* Top Banner: Severity colors strictly for severity */}
-          <div
-            className={`p-6 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-              report.severityLevel === "critical" || report.severityLevel === "high"
-                ? "bg-red-500/10 border-red-500/35"
-                : report.severityLevel === "medium"
-                ? "bg-amber-500/10 border-amber-500/35"
-                : "bg-emerald-500/10 border-emerald-500/35"
-            }`}
-          >
+          {/* Neutral Report Title Banner (never merges condition or score into title) */}
+          <div className="p-6 rounded-2xl bg-surface border border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`px-2.5 py-0.5 rounded font-mono text-xs font-bold uppercase ${
-                    report.severityLevel === "critical" || report.severityLevel === "high"
-                      ? "bg-red-500 text-white"
-                      : report.severityLevel === "medium"
-                      ? "bg-amber-500 text-slate-950"
-                      : "bg-emerald-500 text-slate-950"
-                  }`}
-                >
-                  {report.severityLevel} SEVERITY ({report.severityScore}/100)
-                </span>
                 <span className="font-mono text-xs text-slate-400">
-                  ID: <strong className="text-slate-200">{report.id}</strong>
+                  ID: <strong className="text-slate-200">{normReport.id}</strong>
                 </span>
-                {report.privacyBlurApplied !== false && (
+                {normReport.privacyBlurApplied !== false && (
                   <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/35 text-blue-300 font-mono text-xs font-semibold">
                     <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
                     <span>Privacy blur: on</span>
                   </span>
                 )}
               </div>
-              <h2 className="text-2xl font-black text-white">{report.title}</h2>
+              <h2 className="text-2xl font-black text-white">{normReport.title}</h2>
               <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-                {report.summary}
+                {normReport.summary}
               </p>
             </div>
 
             <div className="flex items-center space-x-3 shrink-0">
               <a
-                href={`/api/reports/${report.id}/export`}
+                href={`/api/reports/${normReport.id}/export`}
                 target="_blank"
                 rel="noreferrer"
-                className="min-h-[42px] px-4 py-2.5 rounded-xl bg-surface hover:bg-slate-800 border border-border text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition"
+                className="min-h-[42px] px-4 py-2.5 rounded-xl bg-background hover:bg-slate-800 border border-border text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition"
               >
                 <Printer className="w-4 h-4 text-blue-400" />
                 <span>Export PDF / Print</span>
@@ -457,19 +448,22 @@ export const RoadPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Separated Signals: Measured severity (SAM) vs Visual condition (Muse Spark) */}
+          <DualSignalCards report={normReport} />
+
           {/* Crisp Mask Overlay Viewer (NO decorative effects) & AnimatedList Findings */}
           <div className="grid md:grid-cols-3 gap-6">
             <div className="md:col-span-2">
               <MaskOverlayViewer
-                imageUrl={report.imageUrl}
-                imageWidth={report.imageWidth}
-                imageHeight={report.imageHeight}
-                findings={report.findings}
+                imageUrl={normReport.imageUrl}
+                imageWidth={normReport.imageWidth}
+                imageHeight={normReport.imageHeight}
+                findings={normReport.findings}
                 selectedFindingId={activeFindingId}
                 onSelectFinding={setSelectedFindingId}
                 title="SAM 3.1 Road Damage Mask Segmentation"
-                privacyBlurApplied={report.privacyBlurApplied !== false}
-                privacyRegionsBlurred={report.privacyRegionsBlurred}
+                privacyBlurApplied={normReport.privacyBlurApplied !== false}
+                privacyRegionsBlurred={normReport.privacyRegionsBlurred}
               />
             </div>
 
@@ -479,13 +473,13 @@ export const RoadPage: React.FC = () => {
                 <div className="flex items-center justify-between border-b border-border pb-3">
                   <span className="font-bold text-sm text-white">Detected Findings</span>
                   <span className="font-mono text-xs text-slate-400">
-                    {report.findings.length} objects
+                    {normReport.findings.length} objects
                   </span>
                 </div>
 
-                {report.findings.length === 0 ? (
+                {normReport.findings.length === 0 ? (
                   <div className="py-8 text-center text-xs text-emerald-400 font-medium">
-                    Zero road surface defects detected. Street surface appears intact.
+                    Zero discrete road defects detected by SAM 3.1.
                   </div>
                 ) : (
                   <AnimatedList
@@ -493,7 +487,7 @@ export const RoadPage: React.FC = () => {
                     frame={false}
                     theme="dark"
                     width="100%"
-                    maxHeight={340}
+                    maxHeight={320}
                     gap={8}
                     radius={12}
                     accentColor="#3b82f6"
@@ -501,13 +495,13 @@ export const RoadPage: React.FC = () => {
                     showGradients={false}
                     animation={prefersReducedMotion ? "none" : "slide"}
                     onItemSelect={(_item, idx) => {
-                      const f = report.findings[idx];
+                      const f = normReport.findings[idx];
                       if (f) {
                         setSelectedFindingId(selectedFindingId === f.id ? null : f.id);
                       }
                     }}
                     renderItem={(_item, idx, isHighlighted) => {
-                      const f = report.findings[idx];
+                      const f = normReport.findings[idx];
                       if (!f) return null;
                       const active = activeFindingId === f.id || isHighlighted;
                       return (
@@ -546,18 +540,25 @@ export const RoadPage: React.FC = () => {
                     }}
                   />
                 )}
+
+                {/* Static Limitations Disclosure under findings */}
+                <div className="pt-2 border-t border-border/60 text-[11px] text-slate-400 leading-relaxed">
+                  {normReport.limitations || REPORT_LIMITATIONS_TEXT}
+                </div>
               </div>
 
               {/* Urgency & Recommended Action Card */}
               <div className="bg-background/70 rounded-xl border border-border p-3.5 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Estimated Urgency:</span>
-                  <span className="font-mono font-bold text-white">{report.estimatedUrgency}</span>
+                  <span className="text-slate-400">Target Urgency:</span>
+                  <span className="font-mono font-bold text-white">
+                    {normReport.estimatedUrgency}
+                  </span>
                 </div>
                 <div>
                   <div className="text-slate-400 mb-1">Recommended Municipal Action:</div>
                   <div className="text-slate-200 font-medium leading-relaxed">
-                    {report.recommendedAction}
+                    {normReport.recommendedAction}
                   </div>
                 </div>
               </div>
@@ -565,7 +566,7 @@ export const RoadPage: React.FC = () => {
           </div>
 
           {/* Deterministic Severity Score Breakdown */}
-          <SeverityBreakdownCard report={report} />
+          <SeverityBreakdownCard report={normReport} />
         </SectionReveal>
       )}
     </div>

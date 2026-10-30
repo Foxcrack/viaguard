@@ -1,6 +1,13 @@
-import { InspectionReport, calculateSeverity } from "@viaguard/core";
+import {
+  InspectionReport,
+  REPORT_LIMITATIONS_TEXT,
+  calculateSeverity,
+  normalizeInspectionReport,
+} from "@viaguard/core";
 
-export function generateHtmlReport(report: InspectionReport): string {
+export function generateHtmlReport(rawReport: InspectionReport): string {
+  const report = normalizeInspectionReport(rawReport);
+
   const severityColors = {
     low: { bg: "#d1fae5", text: "#065f46", border: "#10b981" },
     medium: { bg: "#fef3c7", text: "#92400e", border: "#f59e0b" },
@@ -8,7 +15,18 @@ export function generateHtmlReport(report: InspectionReport): string {
     critical: { bg: "#450a0a", text: "#fecaca", border: "#dc2626" },
   };
 
-  const currentSev = severityColors[report.severityLevel] || severityColors.low;
+  const conditionColors = {
+    good: { bg: "#d1fae5", text: "#065f46", border: "#10b981" },
+    fair: { bg: "#fef3c7", text: "#92400e", border: "#f59e0b" },
+    poor: { bg: "#fee2e2", text: "#991b1b", border: "#ef4444" },
+    critical: { bg: "#450a0a", text: "#fecaca", border: "#dc2626" },
+  };
+
+  const measured = report.measuredSeverity!;
+  const visual = report.visualCondition!;
+  const currentSev = severityColors[measured.level] || severityColors.low;
+  const currentCond = conditionColors[visual.level] || conditionColors.fair;
+
   const breakdown =
     report.severityBreakdown ??
     calculateSeverity(report.afterFindings ?? report.findings).breakdown;
@@ -76,6 +94,14 @@ export function generateHtmlReport(report: InspectionReport): string {
   `
     : "";
 
+  const discrepancyBox = report.signalDiscrepancyNote
+    ? `
+    <div style="margin-bottom: 20px; padding: 12px 14px; border-radius: 8px; background: #fffbeb; border: 1px solid #f59e0b; color: #92400e; font-size: 13px;">
+      <strong>Signal Comparison Note:</strong> ${report.signalDiscrepancyNote}
+    </div>
+  `
+    : "";
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -95,21 +121,18 @@ export function generateHtmlReport(report: InspectionReport): string {
       margin: 0 auto;
     }
     .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
       border-bottom: 2px solid #0f172a;
       padding-bottom: 16px;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
     }
     .badge {
       display: inline-block;
-      padding: 6px 14px;
+      padding: 4px 12px;
       border-radius: 9999px;
       font-weight: 700;
-      font-size: 14px;
+      font-size: 12px;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
     }
     .actions-bar {
       margin-bottom: 24px;
@@ -124,6 +147,8 @@ export function generateHtmlReport(report: InspectionReport): string {
       cursor: pointer;
       font-weight: 500;
       font-size: 13px;
+      text-decoration: none;
+      color: #0f172a;
     }
     .btn:hover { background: #f1f5f9; }
     @media print {
@@ -150,26 +175,52 @@ export function generateHtmlReport(report: InspectionReport): string {
     }
 
     <div class="header">
-      <div>
-        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-bottom: 4px;">
-          Municipal Civic Works Inspection Division
-        </div>
-        <h1 style="margin: 0; font-size: 24px; color: #0f172a;">${report.title}</h1>
-        <div style="font-size: 12px; color: #64748b; margin-top: 4px;">
-          Report ID: <strong>${report.id}</strong> | Timestamp: ${new Date(report.createdAt).toLocaleString()}
-          ${
-            report.privacyBlurApplied !== false
-              ? ` | <span style="display: inline-block; padding: 1px 8px; border-radius: 9999px; background: #eff6ff; border: 1px solid #93c5fd; color: #1d4ed8; font-weight: 600; font-size: 11px;">Privacy blur: on</span>`
-              : ""
-          }
-        </div>
+      <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-bottom: 4px;">
+        Municipal Civic Works Inspection Division
       </div>
-      <div style="text-align: right;">
-        <span class="badge" style="background: ${currentSev.bg}; color: ${currentSev.text}; border: 1px solid ${currentSev.border};">
-          ${report.severityLevel.toUpperCase()} SEVERITY (${report.severityScore}/100)
-        </span>
+      <h1 style="margin: 0; font-size: 24px; color: #0f172a;">${report.title}</h1>
+      <div style="font-size: 12px; color: #64748b; margin-top: 6px;">
+        Report ID: <strong>${report.id}</strong> | Timestamp: ${new Date(report.createdAt).toLocaleString()}
+        ${
+          report.privacyBlurApplied !== false
+            ? ` | <span style="display: inline-block; padding: 1px 8px; border-radius: 9999px; background: #eff6ff; border: 1px solid #93c5fd; color: #1d4ed8; font-weight: 600; font-size: 11px;">Privacy blur: on</span>`
+            : ""
+        }
       </div>
     </div>
+
+    <!-- Separated Signals: Measured severity (SAM) vs Visual condition (Muse Spark) -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+      <div style="padding: 14px 16px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc;">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; margin-bottom: 8px;">
+          Measured severity (SAM)
+        </div>
+        <div>
+          <span class="badge" style="background: ${currentSev.bg}; color: ${currentSev.text}; border: 1px solid ${currentSev.border};">
+            ${measured.level.toUpperCase()} (${measured.score}/100)
+          </span>
+        </div>
+        <div style="font-size: 12px; color: #64748b; margin-top: 8px;">
+          Deterministic score computed strictly from ${breakdown.damageInstanceCount} discrete SAM 3.1 instance(s).
+        </div>
+      </div>
+
+      <div style="padding: 14px 16px; border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc;">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; margin-bottom: 8px;">
+          Visual condition (Muse Spark)
+        </div>
+        <div>
+          <span class="badge" style="background: ${currentCond.bg}; color: ${currentCond.text}; border: 1px solid ${currentCond.border};">
+            ${visual.level.toUpperCase()}
+          </span>
+        </div>
+        <div style="font-size: 12px; color: #334155; margin-top: 8px;">
+          ${visual.explanation}
+        </div>
+      </div>
+    </div>
+
+    ${discrepancyBox}
 
     <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px;">
       <div>
@@ -181,11 +232,11 @@ export function generateHtmlReport(report: InspectionReport): string {
       </div>
 
       <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
-        <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Estimated Urgency</div>
+        <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Target Repair Urgency</div>
         <div style="font-weight: 700; color: #0f172a; margin-bottom: 12px;">${report.estimatedUrgency}</div>
 
-        <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Classification</div>
-        <div style="font-weight: 600; color: #0f172a; margin-bottom: 12px;">${report.sceneType} (${report.overallCondition})</div>
+        <div style="font-size: 12px; color: #64748b; margin-bottom: 4px;">Scene Classification</div>
+        <div style="font-weight: 600; color: #0f172a; margin-bottom: 12px;">${report.sceneType}</div>
 
         ${
           report.location
@@ -237,11 +288,11 @@ export function generateHtmlReport(report: InspectionReport): string {
           </tr>
         </thead>
         <tbody>
-          ${findingsRows || "<tr><td colspan='4' style='padding: 16px; text-align: center; color: #64748b;'>No significant structural damage detected in the frame.</td></tr>"}
+          ${findingsRows || "<tr><td colspan='4' style='padding: 16px; text-align: center; color: #64748b;'>No discrete surface defects detected in the frame.</td></tr>"}
         </tbody>
       </table>
-      <div style="font-size: 11px; color: #94a3b8; margin-top: 6px;">
-        * Note: Relative areas represent percentage coverage of the digital camera sensor frame, not certified geographic square meters.
+      <div style="font-size: 12px; color: #64748b; margin-top: 8px;">
+        ${report.limitations || REPORT_LIMITATIONS_TEXT}
       </div>
     </div>
 
@@ -255,4 +306,3 @@ export function generateHtmlReport(report: InspectionReport): string {
 </body>
 </html>`;
 }
-

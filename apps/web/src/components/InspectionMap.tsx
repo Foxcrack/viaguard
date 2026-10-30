@@ -7,7 +7,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
-import { InspectionReport } from "@viaguard/core";
+import { InspectionReport, normalizeInspectionReport } from "@viaguard/core";
 import { Link } from "react-router-dom";
 import { Navigation } from "lucide-react";
 
@@ -125,7 +125,8 @@ export const InspectionMap: React.FC<InspectionMapProps> = ({
         {/* Report Pin Markers */}
         {reports
           .filter((r) => r.location)
-          .map((report) => {
+          .map((rawReport) => {
+            const report = normalizeInspectionReport(rawReport);
             const loc = report.location!;
             const pinColor =
               SEVERITY_COLORS[report.severityLevel] || SEVERITY_COLORS.low;
@@ -137,7 +138,7 @@ export const InspectionMap: React.FC<InspectionMapProps> = ({
                 icon={createCustomPin(pinColor)}
               >
                 <Popup className="custom-popup">
-                  <div className="w-56 text-slate-800 text-xs">
+                  <div className="w-60 text-slate-800 text-xs">
                     {report.imageUrl && (
                       <img
                         src={report.imageUrl}
@@ -148,16 +149,22 @@ export const InspectionMap: React.FC<InspectionMapProps> = ({
                     <div className="font-bold text-sm text-slate-900 line-clamp-1">
                       {report.title}
                     </div>
-                    <div className="flex items-center space-x-1.5 my-1.5">
-                      <span
-                        className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase text-white"
-                        style={{ backgroundColor: pinColor }}
-                      >
-                        {report.severityLevel} ({report.severityScore}/100)
-                      </span>
-                      <span className="text-slate-500 text-[10px] uppercase">
-                        Source: {loc.source}
-                      </span>
+                    <div className="space-y-1 my-1.5 text-[11px]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Measured severity (SAM):</span>
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase text-white"
+                          style={{ backgroundColor: pinColor }}
+                        >
+                          {report.severityLevel} ({report.severityScore}/100)
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Visual condition (Muse Spark):</span>
+                        <span className="font-semibold uppercase text-slate-800">
+                          {report.visualCondition?.level ?? report.overallCondition}
+                        </span>
+                      </div>
                     </div>
                     <p className="text-slate-600 line-clamp-2 mb-2">
                       {report.summary}

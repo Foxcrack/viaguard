@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { SectionReveal } from "@/components/SectionReveal";
 import { api } from "../api/client.ts";
-import { InspectionReport } from "@viaguard/core";
+import { InspectionReport, normalizeInspectionReport } from "@viaguard/core";
 import { FileText, Printer, Eye, Calendar, MapPin, Search } from "lucide-react";
 
 export const ReportsPage: React.FC = () => {
@@ -15,7 +15,7 @@ export const ReportsPage: React.FC = () => {
   useEffect(() => {
     api
       .getReports()
-      .then((data) => setReports(data))
+      .then((data) => setReports(data.map(normalizeInspectionReport)))
       .catch((err) => console.error("Error loading reports:", err))
       .finally(() => setLoading(false));
   }, []);
@@ -104,7 +104,8 @@ export const ReportsPage: React.FC = () => {
               <tr>
                 <th className="py-3 px-4">Inspection Audit</th>
                 <th className="py-3 px-4">Module</th>
-                <th className="py-3 px-4 text-center">Severity</th>
+                <th className="py-3 px-4 text-center">Measured Severity (SAM)</th>
+                <th className="py-3 px-4 text-center">Visual Condition (Muse Spark)</th>
                 <th className="py-3 px-4 text-center">Detections</th>
                 <th className="py-3 px-4">Date &amp; Location</th>
                 <th className="py-3 px-4 text-right">Actions</th>
@@ -148,6 +149,20 @@ export const ReportsPage: React.FC = () => {
                       }`}
                     >
                       {r.severityLevel} ({r.severityScore}/100)
+                    </span>
+                  </td>
+                  <td className="py-3.5 px-4 text-center">
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded font-mono text-[10px] font-bold uppercase ${
+                        r.visualCondition?.level === "critical" ||
+                        r.visualCondition?.level === "poor"
+                          ? "bg-red-500/15 text-red-300 border border-red-500/30"
+                          : r.visualCondition?.level === "fair"
+                          ? "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                          : "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                      }`}
+                    >
+                      {r.visualCondition?.level ?? r.overallCondition}
                     </span>
                   </td>
                   <td className="py-3.5 px-4 text-center font-mono text-slate-300 tabular-nums">

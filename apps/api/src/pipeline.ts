@@ -15,6 +15,13 @@ import {
   sanitizeConcepts,
   postProcessFindings,
   deduplicateFindingsNMS,
+  getUrgencyForSeverity,
+  buildNeutralReportTitle,
+  normalizeVisualConditionLevel,
+  toSingleSentenceExplanation,
+  getSignalDiscrepancyNote,
+  REPORT_LIMITATIONS_TEXT,
+  normalizeInspectionReport,
 } from "@viaguard/core";
 import {
   understandSceneWithMuseSpark,
@@ -394,20 +401,24 @@ export async function runRoadPipeline(options: {
       }
       const filteredBundleFindings = postProcessFindings(bundle.report.findings);
       const recomputedSeverity = calculateSeverity(filteredBundleFindings);
-      const replayedReport: InspectionReport = {
+      const createdAt = new Date().toISOString();
+      const loc = resolvedLocation ?? bundle.report.location;
+      const replayedReport: InspectionReport = normalizeInspectionReport({
         ...bundle.report,
         id: `rep-road-replay-${Date.now()}-${preprocessed.hash.slice(0, 6)}`,
-        createdAt: new Date().toISOString(),
+        createdAt,
+        title: buildNeutralReportTitle({ module: "road", location: loc, createdAt }),
         imageUrl: preprocessed.relativeUrl,
-        location: resolvedLocation ?? bundle.report.location,
+        location: loc,
         findings: filteredBundleFindings,
         severityScore: recomputedSeverity.score,
         severityLevel: recomputedSeverity.level,
         severityBreakdown: recomputedSeverity.breakdown,
+        estimatedUrgency: getUrgencyForSeverity(recomputedSeverity.level),
         privacyBlurApplied: privacyBlur,
         privacyRegionsBlurred: privacyBlur ? regionsBlurred : 0,
         isCached: true,
-      };
+      });
       await storage.save(replayedReport);
       notify("Replaying cached real responses complete.", 100);
       return replayedReport;
@@ -447,6 +458,8 @@ export async function runRoadPipeline(options: {
       regionsBlurred = blurRes.regionsBlurred;
     }
     const severity = calculateSeverity(filteredFindings);
+    const urgency = getUrgencyForSeverity(severity.level);
+    const visualLevel = normalizeVisualConditionLevel(scene.overall_condition);
     notify("Replaying cached Muse Spark engineering report...", 90);
     const { report: structuredReport } = await writeReportWithMuseSpark({
       module: "road",
@@ -454,28 +467,45 @@ export async function runRoadPipeline(options: {
       findings: filteredFindings,
       severityScore: severity.score,
       severityLevel: severity.level,
+      urgency,
       imageHash: preprocessed.hash,
       useCache: true,
     });
+    const createdAt = new Date().toISOString();
     const reportId = `rep-road-replay-${Date.now()}-${preprocessed.hash.slice(0, 8)}`;
-    const replayed: InspectionReport = {
+    const replayed: InspectionReport = normalizeInspectionReport({
       id: reportId,
       module: "road",
-      createdAt: new Date().toISOString(),
+      createdAt,
       imageUrl: preprocessed.relativeUrl,
       imageWidth: preprocessed.width,
       imageHeight: preprocessed.height,
       location: resolvedLocation,
       sceneType: scene.scene_type,
-      overallCondition: scene.overall_condition,
+      overallCondition: visualLevel,
       severityScore: severity.score,
       severityLevel: severity.level,
       severityBreakdown: severity.breakdown,
+      measuredSeverity: {
+        score: severity.score,
+        level: severity.level,
+        breakdown: severity.breakdown,
+      },
+      visualCondition: {
+        level: visualLevel,
+        explanation: toSingleSentenceExplanation(
+          structuredReport.visualConditionExplanation || scene.notes,
+          visualLevel,
+          scene.scene_type
+        ),
+      },
+      signalDiscrepancyNote: getSignalDiscrepancyNote(severity.level, visualLevel),
+      limitations: REPORT_LIMITATIONS_TEXT,
       findings: filteredFindings,
-      title: structuredReport.title,
+      title: buildNeutralReportTitle({ module: "road", location: resolvedLocation, createdAt }),
       summary: structuredReport.summary,
       recommendedAction: structuredReport.recommendedAction,
-      estimatedUrgency: structuredReport.estimatedUrgency,
+      estimatedUrgency: urgency,
       isCached: true,
       privacyBlurApplied: privacyBlur,
       privacyRegionsBlurred: regionsBlurred,
@@ -483,7 +513,7 @@ export async function runRoadPipeline(options: {
         vision: "muse-spark-1.3",
         segmentation: "sam-3.1",
       },
-    };
+    });
     await storage.save(replayed);
     notify("Replaying cached real responses complete.", 100);
     return replayed;
@@ -548,11 +578,13 @@ export async function runRoadPipeline(options: {
     privacyRegionsBlurred = blurRes.regionsBlurred;
   }
 
-  // Step 4: Deterministic Scoring (computed strictly on filtered & deduplicated findings)
+  // Step 4: Deterministic Scoring & Fixed Urgency Mapping
   notify("Computing objective severity index and relative areas...", 80);
   const severity = calculateSeverity(filteredFindings);
+  const urgency = getUrgencyForSeverity(severity.level);
+  const visualLevel = normalizeVisualConditionLevel(scene.overall_condition);
 
-  // Step 5: Muse Spark Report Generation
+  // Step 5: Muse Spark Report Narrative (given fixed urgency; never invents title or urgency)
   notify("Authoring municipal engineering report...", 90);
   const { report: structuredReport } = await writeReportWithMuseSpark({
     module: "road",
@@ -560,6 +592,7 @@ export async function runRoadPipeline(options: {
     findings: filteredFindings,
     severityScore: severity.score,
     severityLevel: severity.level,
+    urgency,
     imageHash: preprocessed.hash,
     useCache: false,
     recordToCache,
@@ -567,25 +600,41 @@ export async function runRoadPipeline(options: {
 
   // Step 6: Persist Report
   notify("Finalizing and persisting inspection report...", 98);
+  const createdAt = new Date().toISOString();
   const reportId = `rep-road-${Date.now()}-${preprocessed.hash.slice(0, 8)}`;
-  const inspectionReport: InspectionReport = {
+  const inspectionReport: InspectionReport = normalizeInspectionReport({
     id: reportId,
     module: "road",
-    createdAt: new Date().toISOString(),
+    createdAt,
     imageUrl: preprocessed.relativeUrl,
     imageWidth: preprocessed.width,
     imageHeight: preprocessed.height,
     location: resolvedLocation,
     sceneType: scene.scene_type,
-    overallCondition: scene.overall_condition,
+    overallCondition: visualLevel,
     severityScore: severity.score,
     severityLevel: severity.level,
     severityBreakdown: severity.breakdown,
+    measuredSeverity: {
+      score: severity.score,
+      level: severity.level,
+      breakdown: severity.breakdown,
+    },
+    visualCondition: {
+      level: visualLevel,
+      explanation: toSingleSentenceExplanation(
+        structuredReport.visualConditionExplanation || scene.notes,
+        visualLevel,
+        scene.scene_type
+      ),
+    },
+    signalDiscrepancyNote: getSignalDiscrepancyNote(severity.level, visualLevel),
+    limitations: REPORT_LIMITATIONS_TEXT,
     findings: filteredFindings,
-    title: structuredReport.title,
+    title: buildNeutralReportTitle({ module: "road", location: resolvedLocation, createdAt }),
     summary: structuredReport.summary,
     recommendedAction: structuredReport.recommendedAction,
-    estimatedUrgency: structuredReport.estimatedUrgency,
+    estimatedUrgency: urgency,
     isCached: false,
     privacyBlurApplied: privacyBlur,
     privacyRegionsBlurred,
@@ -598,7 +647,7 @@ export async function runRoadPipeline(options: {
       vision: "muse-spark-1.3",
       segmentation: "sam-3.1",
     },
-  };
+  });
 
   if (recordToCache) {
     saveVerifiedDemoBundle({
@@ -671,10 +720,16 @@ export async function runConstructionPipeline(options: {
       ? postProcessFindings(bundle.report.afterFindings)
       : undefined;
     const recomputedSeverity = calculateSeverity(filteredAfter ?? filteredBefore);
-    const replayedReport: InspectionReport = {
+    const createdAt = new Date().toISOString();
+    const replayedReport: InspectionReport = normalizeInspectionReport({
       ...bundle.report,
       id: `rep-const-replay-${Date.now()}-${afterPrep.hash.slice(0, 6)}`,
-      createdAt: new Date().toISOString(),
+      createdAt,
+      title: buildNeutralReportTitle({
+        module: "construction",
+        location: bundle.report.location,
+        createdAt,
+      }),
       imageUrl: beforePrep.relativeUrl,
       afterImageUrl: afterPrep.relativeUrl,
       findings: filteredBefore,
@@ -682,10 +737,11 @@ export async function runConstructionPipeline(options: {
       severityScore: recomputedSeverity.score,
       severityLevel: recomputedSeverity.level,
       severityBreakdown: recomputedSeverity.breakdown,
+      estimatedUrgency: getUrgencyForSeverity(recomputedSeverity.level),
       privacyBlurApplied: privacyBlur,
       privacyRegionsBlurred: privacyBlur ? regionsBlurred : 0,
       isCached: true,
-    };
+    });
     await storage.save(replayedReport);
     notify("Replaying cached real responses complete.", 100);
     return replayedReport;
@@ -800,6 +856,8 @@ export async function runConstructionPipeline(options: {
 
   notify("Authoring comparative progression report with Muse Spark...", 92);
   const severity = calculateSeverity(afterFindings);
+  const urgency = getUrgencyForSeverity(severity.level);
+  const visualLevel = normalizeVisualConditionLevel(afterScene.overall_condition);
 
   const { report: structuredReport } = await writeReportWithMuseSpark({
     module: "construction",
@@ -807,17 +865,19 @@ export async function runConstructionPipeline(options: {
     findings: afterFindings,
     severityScore: severity.score,
     severityLevel: severity.level,
+    urgency,
     imageHash: pairHash,
     constructionDiffSummary: `${diffResult.overallAssessment}\n${diffSummary}`,
     useCache: false,
     recordToCache,
   });
 
+  const createdAt = new Date().toISOString();
   const reportId = `rep-const-${Date.now()}-${afterPrep.hash.slice(0, 8)}`;
-  const inspectionReport: InspectionReport = {
+  const inspectionReport: InspectionReport = normalizeInspectionReport({
     id: reportId,
     module: "construction",
-    createdAt: new Date().toISOString(),
+    createdAt,
     imageUrl: beforePrep.relativeUrl,
     afterImageUrl: afterPrep.relativeUrl,
     imageWidth: beforePrep.width,
@@ -825,17 +885,32 @@ export async function runConstructionPipeline(options: {
     afterImageWidth: afterPrep.width,
     afterImageHeight: afterPrep.height,
     sceneType: afterScene.scene_type,
-    overallCondition: afterScene.overall_condition,
+    overallCondition: visualLevel,
     severityScore: severity.score,
     severityLevel: severity.level,
     severityBreakdown: severity.breakdown,
+    measuredSeverity: {
+      score: severity.score,
+      level: severity.level,
+      breakdown: severity.breakdown,
+    },
+    visualCondition: {
+      level: visualLevel,
+      explanation: toSingleSentenceExplanation(
+        structuredReport.visualConditionExplanation || afterScene.notes,
+        visualLevel,
+        afterScene.scene_type
+      ),
+    },
+    signalDiscrepancyNote: getSignalDiscrepancyNote(severity.level, visualLevel),
+    limitations: REPORT_LIMITATIONS_TEXT,
     findings: beforeFindings,
     afterFindings: afterFindings,
     constructionDiff: diffResult,
-    title: structuredReport.title,
+    title: buildNeutralReportTitle({ module: "construction", createdAt }),
     summary: structuredReport.summary,
     recommendedAction: structuredReport.recommendedAction,
-    estimatedUrgency: structuredReport.estimatedUrgency,
+    estimatedUrgency: urgency,
     isCached: false,
     privacyBlurApplied: privacyBlur,
     privacyRegionsBlurred,
@@ -848,7 +923,7 @@ export async function runConstructionPipeline(options: {
       vision: "muse-spark-1.3",
       segmentation: "sam-3.1",
     },
-  };
+  });
 
   if (recordToCache) {
     saveVerifiedDemoBundle({

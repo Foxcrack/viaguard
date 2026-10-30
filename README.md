@@ -124,11 +124,22 @@ $$\text{Score} = \text{clamp}\!\Big(\text{round}\big(S_{\text{total}} + S_{\text
   - `patch`: `0.7` (repaired surface wear)
   - `puddle`: `0.6` (standing drainage water)
   - `manhole cover`: `0` (neutral municipal utility fixture; excluded from damage scoring)
-- **Severity Level Bands**:
-  - `0 – 24`: **Low** (intact pavement or minor cosmetic wear)
-  - `25 – 54`: **Medium** (moderate localized cracking or small scattered defects)
-  - `55 – 79`: **High** (large structural pothole or extensive multi-defect asphalt breakdown)
-  - `80 – 100`: **Critical** (massive hazardous void or sinkhole requiring urgent intervention)
+- **Severity Level Bands & Deterministic Urgency Mapping (`SEVERITY_URGENCY_MAP` in `packages/core/src/report-signals.ts`)**:
+  Target repair urgency is derived **strictly in code** from `severityLevel` via `getUrgencyForSeverity(level)` and passed as a fixed policy input to Muse Spark (which writes the narrative around it and never invents its own timeframe):
+  - `low` (`0 – 24`): **`within 30 days`**
+  - `medium` (`25 – 54`): **`within 14 days`**
+  - `high` (`55 – 79`): **`within 7 days`**
+  - `critical` (`80 – 100`): **`immediate`**
+
+### Separated Signals, Neutral Titles & Discrepancy Transparency (`packages/core/src/report-signals.ts`)
+- **Two Clearly Separated Signals Everywhere (UI, Report Detail, Printable HTML/PDF, JSON)**:
+  1. **`Measured severity (SAM)`**: Deterministic score (`0–100`) and level (`low` / `medium` / `high` / `critical`) computed strictly from discrete defects segmented by SAM 3.1.
+  2. **`Visual condition (Muse Spark)`**: Overall scene condition (`good` / `fair` / `poor` / `critical`) plus a single concise sentence of visual explanation.
+- **Neutral Report Titles (`buildNeutralReportTitle`)**: Report titles never state a condition or severity score (e.g., `"Road inspection report — 2026-10-30"` or `"Road inspection report — 37.7749, -122.4194"`).
+- **Signal Mismatch Note (`SIGNAL_MISMATCH_NOTE`)**: Whenever `Measured severity (SAM)` and `Visual condition (Muse Spark)` differ by **2 or more ordinal levels** (for example `low` vs `poor`), Viaguard explicitly displays:
+  > *"Measured severity counts only discrete defects detected by SAM. Diffuse surface deterioration may not be captured."*
+- **Static Findings Limitations Line (`REPORT_LIMITATIONS_TEXT`)**: Displayed beneath every findings table/list:
+  > *"Limitations: Detections cover discrete defects; areas are relative to the image frame."*
 
 ---
 
@@ -187,7 +198,7 @@ pnpm dev
 ```bash
 pnpm test
 ```
-Runs 36 Vitest tests validating concept sanitizing, confidence filtering, minimum mask area (`MIN_AREA_RATIO`), cross-concept NMS, area-dominant severity scoring & breakdown, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
+Runs 41 Vitest tests validating concept sanitizing, confidence filtering, minimum mask area (`MIN_AREA_RATIO`), cross-concept NMS, area-dominant severity scoring & breakdown, separated SAM vs. Muse Spark signals, neutral titles, deterministic urgency mapping, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
 
 ### 6. Run Headless CLI Inspection
 ```bash

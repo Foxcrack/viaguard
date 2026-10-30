@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Magnet from "@/components/reactbits/Magnet";
 import StarBorder from "@/components/reactbits/StarBorder";
 import ClickSpark from "@/components/reactbits/ClickSpark";
@@ -6,9 +6,14 @@ import { SectionReveal } from "@/components/SectionReveal";
 import { InspectionProgressStepper } from "@/components/InspectionProgressStepper";
 import { useMotionPreferences } from "@/hooks/useMotionPreferences";
 import { api, DemoSample, ProgressState } from "../api/client.ts";
-import { InspectionReport } from "@viaguard/core";
+import {
+  InspectionReport,
+  REPORT_LIMITATIONS_TEXT,
+  normalizeInspectionReport,
+} from "@viaguard/core";
 import { BeforeAfterSlider } from "../components/BeforeAfterSlider.tsx";
 import { SeverityBreakdownCard } from "../components/SeverityBreakdownCard.tsx";
+import { DualSignalCards } from "../components/DualSignalCards.tsx";
 import { useDemoMode, CachedReplayBanner } from "../context/DemoModeContext.tsx";
 import {
   HardHat,
@@ -130,6 +135,11 @@ export const ConstructionPage: React.FC = () => {
     setProgress(null);
   };
 
+  const normReport = useMemo(
+    () => (report ? normalizeInspectionReport(report) : null),
+    [report]
+  );
+
   return (
     <div className="space-y-8 py-2 max-w-5xl mx-auto">
       {/* Header */}
@@ -158,7 +168,7 @@ export const ConstructionPage: React.FC = () => {
         )}
       </div>
 
-      {!report ? (
+      {!normReport ? (
         <SectionReveal className="space-y-6">
           {/* Dual Upload Cards */}
           <div className="grid md:grid-cols-2 gap-6">
@@ -363,62 +373,54 @@ export const ConstructionPage: React.FC = () => {
       ) : (
         /* Results View */
         <SectionReveal className="space-y-8">
-          <CachedReplayBanner active={Boolean(report.isCached) && !demoMode} compact />
+          <CachedReplayBanner active={Boolean(normReport.isCached) && !demoMode} compact />
 
           {/* Progress Assessment Header */}
-          {report.constructionDiff && (
-            <div
-              className={`p-6 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-                report.constructionDiff.progressScore >= 20
-                  ? "bg-emerald-500/10 border-emerald-500/35"
-                  : report.constructionDiff.progressScore <= -15
-                  ? "bg-red-500/10 border-red-500/35"
-                  : "bg-surface border-border"
-              }`}
-            >
+          {normReport.constructionDiff && (
+            <div className="p-6 rounded-2xl bg-surface border border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
                     className={`px-2.5 py-0.5 rounded font-mono text-xs font-bold uppercase flex items-center space-x-1 ${
-                      report.constructionDiff.progressScore >= 20
+                      normReport.constructionDiff.progressScore >= 20
                         ? "bg-emerald-500 text-slate-950"
-                        : report.constructionDiff.progressScore <= -15
+                        : normReport.constructionDiff.progressScore <= -15
                         ? "bg-red-500 text-white"
                         : "bg-blue-600 text-white"
                     }`}
                   >
-                    {report.constructionDiff.progressScore >= 20 ? (
+                    {normReport.constructionDiff.progressScore >= 20 ? (
                       <TrendingUp className="w-3.5 h-3.5" />
-                    ) : report.constructionDiff.progressScore <= -15 ? (
+                    ) : normReport.constructionDiff.progressScore <= -15 ? (
                       <TrendingDown className="w-3.5 h-3.5" />
                     ) : null}
                     <span>
-                      PROGRESS INDEX: {report.constructionDiff.progressScore > 0 ? "+" : ""}
-                      {report.constructionDiff.progressScore} / 100
+                      PROGRESS INDEX: {normReport.constructionDiff.progressScore > 0 ? "+" : ""}
+                      {normReport.constructionDiff.progressScore} / 100
                     </span>
                   </span>
                   <span className="font-mono text-xs text-slate-400">
-                    ID: <strong className="text-slate-200">{report.id}</strong>
+                    ID: <strong className="text-slate-200">{normReport.id}</strong>
                   </span>
-                  {report.privacyBlurApplied !== false && (
+                  {normReport.privacyBlurApplied !== false && (
                     <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/35 text-blue-300 font-mono text-xs font-semibold">
                       <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
                       <span>Privacy blur: on</span>
                     </span>
                   )}
                 </div>
-                <h2 className="text-2xl font-black text-white">{report.title}</h2>
+                <h2 className="text-2xl font-black text-white">{normReport.title}</h2>
                 <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
-                  {report.constructionDiff.overallAssessment}
+                  {normReport.constructionDiff.overallAssessment}
                 </p>
               </div>
 
               <div className="flex items-center space-x-3 shrink-0">
                 <a
-                  href={`/api/reports/${report.id}/export`}
+                  href={`/api/reports/${normReport.id}/export`}
                   target="_blank"
                   rel="noreferrer"
-                  className="min-h-[42px] px-4 py-2.5 rounded-xl bg-surface hover:bg-slate-800 border border-border text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition"
+                  className="min-h-[42px] px-4 py-2.5 rounded-xl bg-background hover:bg-slate-800 border border-border text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition"
                 >
                   <Printer className="w-4 h-4 text-blue-400" />
                   <span>Export Report</span>
@@ -426,6 +428,9 @@ export const ConstructionPage: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Separated Signals: Measured severity (SAM) vs Visual condition (Muse Spark) */}
+          <DualSignalCards report={normReport} />
 
           {/* Crisp untouched Draggable Comparison Slider */}
           <div className="space-y-3">
@@ -451,18 +456,18 @@ export const ConstructionPage: React.FC = () => {
             </div>
 
             <BeforeAfterSlider
-              beforeImageUrl={report.imageUrl}
-              afterImageUrl={report.afterImageUrl || report.imageUrl}
-              imageWidth={report.imageWidth}
-              imageHeight={report.imageHeight}
-              beforeFindings={report.findings}
-              afterFindings={report.afterFindings}
+              beforeImageUrl={normReport.imageUrl}
+              afterImageUrl={normReport.afterImageUrl || normReport.imageUrl}
+              imageWidth={normReport.imageWidth}
+              imageHeight={normReport.imageHeight}
+              beforeFindings={normReport.findings}
+              afterFindings={normReport.afterFindings}
               showOverlays={showOverlays}
             />
           </div>
 
           {/* Quantitative Diff Breakdown Table */}
-          {report.constructionDiff && (
+          {normReport.constructionDiff && (
             <div className="bg-surface rounded-2xl border border-border p-6 space-y-4">
               <div className="flex items-center justify-between border-b border-border pb-3">
                 <h3 className="text-base font-bold text-white">
@@ -486,7 +491,7 @@ export const ConstructionPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {report.constructionDiff.conceptChanges.map((c) => (
+                    {normReport.constructionDiff.conceptChanges.map((c) => (
                       <tr key={c.concept} className="hover:bg-slate-800/30">
                         <td className="py-3 px-3 font-semibold text-white capitalize">
                           {c.concept}
@@ -539,24 +544,29 @@ export const ConstructionPage: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Static Limitations Disclosure under findings */}
+              <div className="pt-2 border-t border-border/60 text-xs text-slate-400">
+                {normReport.limitations || REPORT_LIMITATIONS_TEXT}
+              </div>
             </div>
           )}
 
           {/* Deterministic Severity Score Breakdown (Post-Epoch Site Hazard) */}
-          <SeverityBreakdownCard report={report} />
+          <SeverityBreakdownCard report={normReport} />
 
           {/* Muse Spark Reasoning Summary */}
           <div className="grid md:grid-cols-2 gap-6 text-xs">
             <div className="bg-surface rounded-2xl border border-border p-5 space-y-2">
               <div className="font-bold text-sm text-white">Visual Reasoning Assessment</div>
-              <p className="text-slate-300 leading-relaxed">{report.summary}</p>
+              <p className="text-slate-300 leading-relaxed">{normReport.summary}</p>
             </div>
             <div className="bg-surface rounded-2xl border border-border p-5 space-y-2">
               <div className="font-bold text-sm text-white">Recommended Site Action</div>
-              <p className="text-slate-300 leading-relaxed">{report.recommendedAction}</p>
+              <p className="text-slate-300 leading-relaxed">{normReport.recommendedAction}</p>
               <div className="pt-2 text-[11px] text-slate-400">
-                Estimated follow-up urgency:{" "}
-                <strong className="font-mono text-slate-200">{report.estimatedUrgency}</strong>
+                Target repair urgency:{" "}
+                <strong className="font-mono text-slate-200">{normReport.estimatedUrgency}</strong>
               </div>
             </div>
           </div>

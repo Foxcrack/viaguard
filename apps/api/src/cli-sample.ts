@@ -86,19 +86,30 @@ async function main() {
     console.log("\n==================================================");
     console.log("           INSPECTION REPORT GENERATED            ");
     console.log("==================================================");
-    console.log(`Report ID:          ${report.id}`);
-    console.log(`Timestamp:          ${report.createdAt}`);
-    console.log(`Title:              ${report.title}`);
-    console.log(`Severity:           ${report.severityScore}/100 [${report.severityLevel.toUpperCase()}]`);
-    console.log(`Condition:          ${report.overallCondition}`);
-    console.log(`Scene Type:         ${report.sceneType}`);
-    console.log(`Action Required:    ${report.recommendedAction}`);
-    console.log(`Urgency:            ${report.estimatedUrgency}`);
-    console.log(`Stored Image:       ${report.imageUrl}`);
+    console.log(`Report ID:                     ${report.id}`);
+    console.log(`Timestamp:                     ${report.createdAt}`);
+    console.log(`Title:                         ${report.title}`);
     console.log(
-      `Privacy Blur:       ${report.privacyBlurApplied ? "on" : "off"} (${report.privacyRegionsBlurred} regions blurred)`
+      `Measured severity (SAM):       ${report.measuredSeverity?.score ?? report.severityScore}/100 [${(
+        report.measuredSeverity?.level ?? report.severityLevel
+      ).toUpperCase()}]`
     );
-    console.log(`Cached:             ${report.isCached ? "YES" : "NO"}`);
+    console.log(
+      `Visual condition (Muse Spark): ${(
+        report.visualCondition?.level ?? report.overallCondition
+      ).toUpperCase()} — ${report.visualCondition?.explanation ?? ""}`
+    );
+    if (report.signalDiscrepancyNote) {
+      console.log(`Signal Discrepancy Note:       ${report.signalDiscrepancyNote}`);
+    }
+    console.log(`Scene Type:                    ${report.sceneType}`);
+    console.log(`Urgency (deterministic):       ${report.estimatedUrgency}`);
+    console.log(`Action Required:               ${report.recommendedAction}`);
+    console.log(`Stored Image:                  ${report.imageUrl}`);
+    console.log(
+      `Privacy Blur:                  ${report.privacyBlurApplied ? "on" : "off"} (${report.privacyRegionsBlurred} regions blurred)`
+    );
+    console.log(`Cached:                        ${report.isCached ? "YES" : "NO"}`);
     if (report.severityBreakdown) {
       const b = report.severityBreakdown;
       const weightsStr =
@@ -119,12 +130,15 @@ async function main() {
       console.log(`  - Type Weights:       ${weightsStr}`);
       console.log(`  - Raw -> Final Score: ${b.rawScore} -> ${b.finalScore}/100`);
     }
-    console.log(`Total Findings:     ${report.findings.length}`);
+    console.log(`Total Findings:                ${report.findings.length}`);
     report.findings.forEach((f, idx) => {
       console.log(
         `  #${idx + 1} ${f.concept.padEnd(20)}: relativeArea=${f.relativeAreaPercent}% | confidence=${f.confidence} | bbox=[${f.boundingBox.x1}, ${f.boundingBox.y1}, ${f.boundingBox.x2}, ${f.boundingBox.y2}]`
       );
     });
+    if (report.limitations) {
+      console.log(`  ${report.limitations}`);
+    }
     console.log("Summary:");
     console.log(`  "${report.summary}"`);
     console.log("==================================================");

@@ -12,9 +12,12 @@ export const GeoLocationSchema = z.object({
 });
 export type GeoLocation = z.infer<typeof GeoLocationSchema>;
 
-// --- Severity ---
+// --- Severity & Visual Condition Signals ---
 export const SeverityLevelSchema = z.enum(["low", "medium", "high", "critical"]);
 export type SeverityLevel = z.infer<typeof SeverityLevelSchema>;
+
+export const VisualConditionLevelSchema = z.enum(["good", "fair", "poor", "critical"]);
+export type VisualConditionLevel = z.infer<typeof VisualConditionLevelSchema>;
 
 export const SeverityBreakdownSchema = z.object({
   rawTotalAreaPercent: z.number(),
@@ -31,6 +34,19 @@ export const SeverityBreakdownSchema = z.object({
   finalScore: z.number(),
 });
 export type SeverityBreakdown = z.infer<typeof SeverityBreakdownSchema>;
+
+export const MeasuredSeveritySchema = z.object({
+  score: z.number().min(0).max(100),
+  level: SeverityLevelSchema,
+  breakdown: SeverityBreakdownSchema.optional(),
+});
+export type MeasuredSeverity = z.infer<typeof MeasuredSeveritySchema>;
+
+export const VisualConditionSchema = z.object({
+  level: VisualConditionLevelSchema,
+  explanation: z.string(),
+});
+export type VisualCondition = z.infer<typeof VisualConditionSchema>;
 
 // --- Bounding Box & Finding ---
 export const BoundingBoxSchema = z.object({
@@ -97,13 +113,14 @@ export const ConstructionDiffSchema = z.object({
 });
 export type ConstructionDiff = z.infer<typeof ConstructionDiffSchema>;
 
-// --- Structured Report (Muse Spark Step 5) ---
+// --- Structured Report (Muse Spark Step 5 — narrative only; title & urgency come from code) ---
 export const StructuredReportSchema = z.object({
-  title: z.string(),
+  title: z.string().optional(),
   summary: z.string(),
   recommendedAction: z.string(),
-  priority: z.enum(["low", "medium", "high", "critical"]),
-  estimatedUrgency: z.string(),
+  visualConditionExplanation: z.string().optional(),
+  priority: z.enum(["low", "medium", "high", "critical"]).optional(),
+  estimatedUrgency: z.string().optional(),
   keyFindings: z.array(
     z.object({
       concept: z.string(),
@@ -131,6 +148,10 @@ export const InspectionReportSchema = z.object({
   severityScore: z.number().min(0).max(100),
   severityLevel: SeverityLevelSchema,
   severityBreakdown: SeverityBreakdownSchema.optional(),
+  measuredSeverity: MeasuredSeveritySchema.optional(),
+  visualCondition: VisualConditionSchema.optional(),
+  signalDiscrepancyNote: z.string().nullable().optional(),
+  limitations: z.string().optional(),
   findings: z.array(DamageFindingSchema),
   afterFindings: z.array(DamageFindingSchema).optional(),
   constructionDiff: ConstructionDiffSchema.optional(),
@@ -179,4 +200,5 @@ export const PRIVACY_CONCEPTS = ["person", "license plate"] as const;
 export * from "./scoring.js";
 export * from "./diff.js";
 export * from "./filtering.js";
+export * from "./report-signals.js";
 

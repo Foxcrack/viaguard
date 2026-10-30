@@ -97,3 +97,4 @@ export const SeverityBreakdownCard: React.FC<SeverityBreakdownCardProps> = ({
     </div>
   );
 };
+

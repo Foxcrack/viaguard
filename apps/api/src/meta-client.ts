@@ -19,6 +19,7 @@ import {
   DEFAULT_ROAD_CONCEPTS,
   DEFAULT_CONSTRUCTION_CONCEPTS,
   sanitizeConcept,
+  normalizeVisualConditionLevel,
 } from "@viaguard/core";
 import { CACHE_DIR } from "./paths.js";
 
@@ -83,11 +84,13 @@ const SCENE_UNDERSTANDING_JSON_SCHEMA = {
     },
     overall_condition: {
       type: "string",
-      description: "Overall physical condition rating",
+      enum: ["good", "fair", "poor", "critical"],
+      description: "Overall visual condition rating: good, fair, poor, or critical",
     },
     notes: {
       type: "string",
-      description: "Concise visual engineering observations",
+      description:
+        "Strictly one concise sentence explaining the visual surface condition observed in the scene.",
     },
   },
   required: ["scene_type", "visible_damage_types", "overall_condition", "notes"],
@@ -97,14 +100,21 @@ const SCENE_UNDERSTANDING_JSON_SCHEMA = {
 const STRUCTURED_REPORT_JSON_SCHEMA = {
   type: "object",
   properties: {
-    title: { type: "string" },
-    summary: { type: "string" },
-    recommendedAction: { type: "string" },
-    priority: {
+    visualConditionExplanation: {
       type: "string",
-      enum: ["low", "medium", "high", "critical"],
+      description:
+        "Strictly one concise sentence explaining the visual condition observed in the scene.",
     },
-    estimatedUrgency: { type: "string" },
+    summary: {
+      type: "string",
+      description:
+        "Concise municipal engineering narrative summarizing the findings and visual condition.",
+    },
+    recommendedAction: {
+      type: "string",
+      description:
+        "Actionable public works repair instructions aligned with the fixed urgency timeframe provided as input.",
+    },
     keyFindings: {
       type: "array",
       items: {
@@ -123,11 +133,9 @@ const STRUCTURED_REPORT_JSON_SCHEMA = {
     },
   },
   required: [
-    "title",
+    "visualConditionExplanation",
     "summary",
     "recommendedAction",
-    "priority",
-    "estimatedUrgency",
     "keyFindings",
   ],
   additionalProperties: false,
@@ -355,14 +363,14 @@ export async function understandSceneWithMuseSpark(options: {
 Return a JSON object matching the schema with:
 - "scene_type": e.g. "asphalt road", "concrete highway", "residential street", "intersection"
 - "visible_damage_types": up to 4 concepts for SAM 3.1 segmentation. STRICT RULES: each item MUST be 1 or 2 words, plain nouns ONLY (e.g. ["pothole", "crack", "patch", "manhole cover", "sinkhole", "debris"]). NEVER output 3+ words, NEVER include adjectives or participles like "cracked", "damaged", "broken", or "worn", and NEVER output paint or background labels like "road marking" or "road surface".
-- "overall_condition": e.g. "poor", "fair", "good", "critical"
-- "notes": concise visual observations`
+- "overall_condition": one of "good", "fair", "poor", or "critical"
+- "notes": strictly ONE concise sentence explaining why you rated the visual surface condition as good, fair, poor, or critical.`
       : `You are an expert construction site inspector. Analyze this construction site image.
 Return a JSON object matching the schema with:
 - "scene_type": e.g. "commercial building foundation", "roadwork zone", "bridge construction"
 - "visible_damage_types": up to 5 concepts for SAM 3.1 segmentation. STRICT RULES: each item MUST be 1 or 2 words, plain nouns ONLY (e.g. ["scaffolding", "concrete wall", "excavator", "steel rebar", "debris", "crack"]). NEVER output 3+ words and NEVER include adjectives like "damaged", "cracked", or "exposed".
-- "overall_condition": e.g. "active framing", "excavation", "structural installation"
-- "notes": concise visual observations`;
+- "overall_condition": one of "good", "fair", "poor", or "critical"
+- "notes": strictly ONE concise sentence explaining the visual site condition.`;
 
   const cacheKey = getCacheKey(model, prompt, options.imageHash);
 
@@ -443,8 +451,8 @@ Return a JSON object matching the schema with:
           options.moduleType === "road"
             ? [...DEFAULT_ROAD_CONCEPTS]
             : [...DEFAULT_CONSTRUCTION_CONCEPTS],
-        overall_condition: "inspection pending",
-        notes: "Fallback to default SAM 3.1 concepts after non-conforming scene JSON.",
+        overall_condition: "fair",
+        notes: "Automated fallback to default SAM 3.1 concepts after non-conforming scene JSON.",
       };
       return { scene: fallbackScene, isCached: false };
     }
@@ -598,12 +606,14 @@ export async function writeReportWithMuseSpark(options: {
   findings: DamageFinding[];
   severityScore: number;
   severityLevel: string;
+  urgency: string;
   imageHash: string;
   constructionDiffSummary?: string;
   useCache?: boolean;
   recordToCache?: boolean;
 }): Promise<{ report: StructuredReport; isCached: boolean }> {
   const model = "muse-spark-1.3";
+  const visualConditionLevel = normalizeVisualConditionLevel(options.scene.overall_condition);
   const findingsSummary = options.findings
     .map(
       (f) =>
@@ -611,24 +621,30 @@ export async function writeReportWithMuseSpark(options: {
     )
     .join("\n");
 
-  const prompt = `You are a municipal civil engineer authoring an official infrastructure inspection report.
-Strictly adhere to the provided measurements. Do NOT invent damage or structural features that were not detected.
+  const prompt = `You are a municipal civil engineer authoring an official infrastructure inspection narrative.
+Strictly adhere to the provided measurements and fixed policy inputs below. Do NOT invent unmeasured defects, do NOT generate a title, and do NOT invent or alter the repair urgency timeframe.
 
-Scene Information:
+Two Distinct Signals:
+1. Measured severity (SAM — discrete segmented defects only): ${options.severityScore}/100 (${options.severityLevel})
+2. Visual condition (Muse Spark — overall scene appearance): ${visualConditionLevel} (${options.scene.notes})
+
+Fixed Policy Inputs:
 - Scene Type: ${options.scene.scene_type}
-- Overall Condition: ${options.scene.overall_condition}
-- Inspector Notes: ${options.scene.notes}
-- Computed Severity Score: ${options.severityScore}/100 (${options.severityLevel})
+- Assigned Repair Urgency (fixed by policy; write the narrative around this exact window): ${options.urgency}
 
-Detected Findings:
-${findingsSummary || "None (No significant surface damage detected)"}
+Detected Discrete Findings (SAM 3.1):
+${findingsSummary || "None (No discrete surface defects met confidence and minimum size thresholds)"}
 ${
   options.constructionDiffSummary
     ? `\nConstruction Measurement Diff:\n${options.constructionDiffSummary}`
     : ""
 }
 
-Generate a concise, professional municipal inspection report matching the requested JSON schema.`;
+Return JSON matching the schema:
+- "visualConditionExplanation": strictly ONE concise sentence explaining why the visual condition is rated "${visualConditionLevel}".
+- "summary": concise factual summary keeping Measured severity (SAM) and Visual condition distinct without contradiction.
+- "recommendedAction": actionable public works instructions aligned with the fixed urgency ("${options.urgency}").
+- "keyFindings": brief descriptions of the detected discrete defects.`;
 
   const cacheKey = getCacheKey(model, prompt, options.imageHash);
 

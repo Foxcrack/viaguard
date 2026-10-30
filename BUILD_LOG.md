@@ -539,3 +539,59 @@ $ tsx src/check-meta.ts
   - Mean Confidence: `75%` (`0.75`)
   - Applied Type Weights: `pothole = 1.3×`
   - Raw &rarr; Final Score: `24.14` &rarr; **`24/100`**
+
+
+---
+
+## 2026-10-30 – Separate Measured Severity (SAM) from Visual Condition (Muse Spark), Neutral Titles & Deterministic Urgency
+
+### 1. Root Cause of Report Inconsistencies on Real Street Photo (`real-street-photo-b.jpg`)
+- **Merged Contradictory Signals**: Previously, Muse Spark authored free-form titles like `"Municipal Infrastructure Inspection - Asphalt Road Pothole Distress"` / `"... in Poor Condition"` that appeared directly alongside the SAM badge `LOW SEVERITY (24/100)`.
+- **Non-Deterministic Urgency**: `estimatedUrgency` was generated freely by the LLM in Step 5, shifting across runs (e.g., `"High, 7-14 days"` vs `"Routine - within 30 to 60 days"`).
+
+### 2. Fixes Implemented (`packages/core/src/report-signals.ts`, `apps/api`, `apps/web`)
+1. **Two Distinct Signals Separated Everywhere (UI, Report Detail, Printable HTML/PDF, JSON, CLI)**:
+   - **`Measured severity (SAM)`** (`measuredSeverity: { score, level, breakdown }`): Deterministic score and level from `calculateSeverity` over discrete segmented instances only.
+   - **`Visual condition (Muse Spark)`** (`visualCondition: { level, explanation }`): Model's `overall_condition` (`"good" | "fair" | "poor" | "critical"`) plus a single concise sentence of explanation.
+   - Rendered side-by-side via `DualSignalCards` (`RoadPage`, `ReportDetailPage`, `ConstructionPage`), separated columns in `ReportsPage`, labeled rows in `InspectionMap` popups, two distinct cards in `generateHtmlReport`, and explicit fields in JSON export (`?format=json`).
+2. **Neutral Report Titles (`buildNeutralReportTitle` / `ensureNeutralReportTitle`)**:
+   - Removed `title` generation from `STRUCTURED_REPORT_JSON_SCHEMA`. Titles are generated strictly in code as `"Road inspection report — <location or YYYY-MM-DD>"` / `"Construction inspection report — <location or YYYY-MM-DD>"` and sanitized on load so no title ever states a condition or score.
+3. **Deterministic Urgency Mapping (`SEVERITY_URGENCY_MAP` / `getUrgencyForSeverity`, documented in `README.md`)**:
+   - Fixed code mapping: `low -> "within 30 days"`, `medium -> "within 14 days"`, `high -> "within 7 days"`, `critical -> "immediate"`.
+   - Passed as a fixed policy input into `writeReportWithMuseSpark` so Muse Spark writes the repair narrative around it and never invents an urgency window.
+   - Unit-tested in `packages/core/test/report-signals.test.ts`.
+4. **Explicit Signal Mismatch Note (`SIGNAL_MISMATCH_NOTE`)**:
+   - Whenever `Measured severity (SAM)` and `Visual condition (Muse Spark)` differ by `>= 2` ordinal levels (e.g., `low` vs `poor`), displays:
+     `"Measured severity counts only discrete defects detected by SAM. Diffuse surface deterioration may not be captured."`
+5. **Static Limitations Line (`REPORT_LIMITATIONS_TEXT`)**:
+   - Added `"Limitations: Detections cover discrete defects; areas are relative to the image frame."` directly beneath the findings list/table across all UI pages, HTML/PDF exports, JSON, and CLI output.
+
+### 3. Verification Suite (`pnpm typecheck`, `pnpm test`, `pnpm build`)
+- `pnpm typecheck`: Passed (`0` errors across `@viaguard/core`, `@viaguard/api`, `@viaguard/web`).
+- `pnpm test`: Passed (`41/41` tests: `28` in `@viaguard/core` including `report-signals.test.ts` + `13` in `@viaguard/api`).
+- `pnpm build`: Passed cleanly across all workspace packages.
+
+### 4. Live Pipeline Re-Run on `real-street-photo-b.jpg` (`rep-road-1793344283555-7e754670`)
+```text
+Report ID:                     rep-road-1793344283555-7e754670
+Timestamp:                     2026-10-30T07:11:23.554Z
+Title:                         Road inspection report — 2026-10-30
+Measured severity (SAM):       24/100 [LOW]
+Visual condition (Muse Spark): POOR — The visual condition is poor because multiple large potholes and a crumbling pavement edge cover the asphalt roadway.
+Signal Discrepancy Note:       Measured severity counts only discrete defects detected by SAM. Diffuse surface deterioration may not be captured.
+Scene Type:                    asphalt road
+Urgency (deterministic):       within 30 days
+Action Required:               Schedule public works crew to clean, patch and compact the six identified potholes and restore the asphalt road pavement edge, provide traffic control and signage during work, and complete all repairs and reinspection within 30 days.
+Privacy Blur:                  on (0 regions blurred)
+Cached:                        NO
+Total Findings:                6
+  #1 pothole             : relativeArea=0.78% | confidence=0.84 | bbox=[0, 243, 88, 269]
+  #2 pothole             : relativeArea=0.62% | confidence=0.84 | bbox=[159, 236, 238, 257]
+  #3 pothole             : relativeArea=0.95% | confidence=0.8 | bbox=[305, 247, 394, 273]
+  #4 pothole             : relativeArea=0.16% | confidence=0.72 | bbox=[192, 187, 258, 195]
+  #5 pothole             : relativeArea=0.21% | confidence=0.7 | bbox=[259, 198, 320, 207]
+  #6 pothole             : relativeArea=0.19% | confidence=0.62 | bbox=[79, 181, 112, 196]
+  Limitations: Detections cover discrete defects; areas are relative to the image frame.
+Summary:
+  "Measured segmented defect severity is low at 24/100 from six discrete potholes totaling approximately 2.91% frame area on an asphalt road, while overall visual condition is separately rated poor due to multiple large potholes and crumbling pavement edge; per policy the assigned repair urgency is within 30 days."
+```

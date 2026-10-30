@@ -6,7 +6,7 @@ import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import * as fs from "fs";
 import * as path from "path";
-import { VERSION } from "@viaguard/core";
+import { VERSION, normalizeInspectionReport } from "@viaguard/core";
 import { runRoadPipeline, runConstructionPipeline } from "./pipeline.js";
 import { storage } from "./storage.js";
 import { jobManager } from "./jobs.js";
@@ -338,7 +338,7 @@ app.get("/api/reports", async (c) => {
     limit: limitParam,
   });
 
-  return c.json({ reports });
+  return c.json({ reports: reports.map(normalizeInspectionReport) });
 });
 
 // 9. Single Report Endpoint
@@ -350,7 +350,7 @@ app.get("/api/reports/:id", async (c) => {
     return c.json({ error: "Report not found" }, 404);
   }
 
-  return c.json(report);
+  return c.json(normalizeInspectionReport(report));
 });
 
 // 10. Printable Export Endpoint (HTML or JSON)
@@ -362,12 +362,13 @@ app.get("/api/reports/:id/export", async (c) => {
     return c.text("Report not found", 404);
   }
 
+  const normalized = normalizeInspectionReport(report);
   const format = c.req.query("format");
   if (format === "json") {
-    return c.json(report);
+    return c.json(normalized);
   }
 
-  const html = generateHtmlReport(report);
+  const html = generateHtmlReport(normalized);
   return c.html(html);
 });
 

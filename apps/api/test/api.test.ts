@@ -123,27 +123,27 @@ describe("Viaguard Backend API Endpoints", () => {
     const mockReport: InspectionReport = {
       id: "test-rep-export-1",
       module: "road",
-      createdAt: new Date().toISOString(),
+      createdAt: "2026-10-30T06:52:23.714Z",
       imageUrl: "/samples/road-sample-pothole.jpg",
       imageWidth: 800,
       imageHeight: 600,
       sceneType: "asphalt road",
       overallCondition: "poor",
-      severityScore: 78,
-      severityLevel: "high",
+      severityScore: 24,
+      severityLevel: "low",
       findings: [
         {
           id: "f-1",
           concept: "pothole",
-          confidence: 0.94,
-          relativeAreaPercent: 8.5,
-          boundingBox: { x1: 100, y1: 150, x2: 400, y2: 350, width: 300, height: 200 },
+          confidence: 0.84,
+          relativeAreaPercent: 0.95,
+          boundingBox: { x1: 100, y1: 150, x2: 180, y2: 200, width: 80, height: 50 },
         },
       ],
-      title: "Municipal Road Damage Assessment: Test St",
-      summary: "Significant asphalt loss identified on eastbound lane.",
-      recommendedAction: "Cold patch void immediately and schedule repaving.",
-      estimatedUrgency: "Within 48 hours",
+      title: "Municipal Road Damage Assessment: Poor Condition 24/100",
+      summary: "Diffuse wear and small potholes identified along asphalt lane.",
+      recommendedAction: "Cold patch localized potholes within 30 days.",
+      estimatedUrgency: "High, 7-14 days",
       isCached: false,
     };
 
@@ -153,17 +153,38 @@ describe("Viaguard Backend API Endpoints", () => {
     expect(resHtml.status).toBe(200);
     const htmlText = await resHtml.text();
     expect(htmlText).toContain("Official Inspection Report");
-    expect(htmlText).toContain("HIGH SEVERITY (78/100)");
+    expect(htmlText).toContain("Road inspection report — 2026-10-30");
+    expect(htmlText).not.toContain("Poor Condition 24/100");
+    expect(htmlText).toContain("Measured severity (SAM)");
+    expect(htmlText).toContain("LOW (24/100)");
+    expect(htmlText).toContain("Visual condition (Muse Spark)");
+    expect(htmlText).toContain("POOR");
+    expect(htmlText).toContain(
+      "Measured severity counts only discrete defects detected by SAM. Diffuse surface deterioration may not be captured."
+    );
+    expect(htmlText).toContain("within 30 days");
     expect(htmlText).toContain("Severity Score Breakdown");
     expect(htmlText).toContain("pothole (1.3×)");
-    expect(htmlText).toContain("Cold patch void immediately");
+    expect(htmlText).toContain(
+      "Limitations: Detections cover discrete defects; areas are relative to the image frame."
+    );
     expect(htmlText).toContain("Privacy blur: on");
 
     const resJson = await app.request(`/api/reports/${mockReport.id}/export?format=json`);
     expect(resJson.status).toBe(200);
     const jsonData = await resJson.json();
     expect(jsonData.id).toBe(mockReport.id);
-    expect(jsonData.severityScore).toBe(78);
+    expect(jsonData.title).toBe("Road inspection report — 2026-10-30");
+    expect(jsonData.estimatedUrgency).toBe("within 30 days");
+    expect(jsonData.measuredSeverity.score).toBe(24);
+    expect(jsonData.measuredSeverity.level).toBe("low");
+    expect(jsonData.visualCondition.level).toBe("poor");
+    expect(jsonData.signalDiscrepancyNote).toBe(
+      "Measured severity counts only discrete defects detected by SAM. Diffuse surface deterioration may not be captured."
+    );
+    expect(jsonData.limitations).toBe(
+      "Limitations: Detections cover discrete defects; areas are relative to the image frame."
+    );
   });
 
   it("GET /api/reports/:id returns 404 for unknown report", async () => {
