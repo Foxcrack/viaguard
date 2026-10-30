@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @viaguard/api --filter @viaguard/web dev",
     "build": "pnpm --filter @viaguard/core build && pnpm --filter @viaguard/api build && pnpm --filter @viaguard/web build",
-    "test": "pnpm --filter @viaguard/core test",
+    "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "check:meta": "pnpm --filter @viaguard/api check:meta",

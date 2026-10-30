@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "check:meta": "tsx src/check-meta.ts",

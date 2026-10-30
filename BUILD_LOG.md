@@ -82,3 +82,33 @@ All development decisions, milestones, testing notes, and command outputs during
 
 ### Next Steps
 - Phase 3: Backend API HTTP endpoints with Hono, multipart image upload handling, progress polling/events, and sample image provisioning.
+
+---
+
+## 2026-10-29 – Phase 3: Backend HTTP API & Persistence
+
+### What was built
+- Implemented full suite of Hono HTTP REST endpoints in `apps/api/src/index.ts`:
+  - `GET /api/health`: Health status, version, timestamp, token tracking, and model IDs.
+  - `POST /api/road/analyze`: Multipart upload handling with optional EXIF / browser / manual coordinate capture, supporting synchronous and async background jobs.
+  - `POST /api/construction/analyze`: Multipart before/after image intake with comparative diffing.
+  - `GET /api/jobs/:id` & `GET /api/jobs/:id/stream`: Server-Sent Events (SSE) progress streaming emitting real-time percentage and step updates to the frontend.
+  - `GET /api/reports`: Filterable persistent list (by module, severity, date limit).
+  - `GET /api/reports/:id`: Single report retrieval.
+  - `GET /api/reports/:id/export`: Printable civic inspection HTML document with print-ready CSS (`@media print`) and JSON export toggle (`?format=json`).
+  - `GET /api/demo/samples`: Dynamic enumeration of bundled demo inspection assets.
+  - `GET /uploads/:filename`: Static serving with strict path sanitization to guard against path traversal.
+- Programmed sample generator `apps/api/src/generate-samples.ts` providing 4 synthetic test cases (pothole damage, alligator cracks, construction site before, construction site after) in `apps/web/public/samples/`.
+- Implemented in-memory job manager (`apps/api/src/jobs.ts`) with automated lifecycle cleanup.
+- Added comprehensive endpoint test suite `apps/api/test/api.test.ts`.
+
+### Verification Output
+- `pnpm test`: 20 unit and endpoint tests passed (13 core tests + 7 API integration tests).
+- All endpoints tested and verified with standard HTTP requests.
+
+### Decisions
+- SSE stream implementation sends state heartbeats and cleanly terminates when the pipeline reaches `completed` or `failed` state.
+- HTML export styling adopts standard civic authority typography and high-contrast accessibility standards.
+
+### Next Steps
+- Phase 4: Frontend Road Damage Module + Geolocation Map (`apps/web` with Vite, React Router, Tailwind CSS, Leaflet, and React Bits modern components).
