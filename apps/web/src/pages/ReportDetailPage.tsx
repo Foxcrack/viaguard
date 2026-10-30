@@ -4,6 +4,7 @@ import { api } from "../api/client.ts";
 import { InspectionReport } from "@viaguard/core";
 import { MaskOverlayViewer } from "../components/MaskOverlayViewer.tsx";
 import { InspectionMap } from "../components/InspectionMap.tsx";
+import { CachedReplayBanner, useDemoMode } from "../context/DemoModeContext.tsx";
 import { Printer, ArrowLeft, MapPin, Calendar, HardHat, ShieldAlert, Sparkles } from "lucide-react";
 
 export const ReportDetailPage: React.FC = () => {
@@ -11,6 +12,7 @@ export const ReportDetailPage: React.FC = () => {
   const [report, setReport] = useState<InspectionReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { demoMode } = useDemoMode();
 
   useEffect(() => {
     if (!id) return;
@@ -75,6 +77,7 @@ export const ReportDetailPage: React.FC = () => {
       </div>
 
       {/* Main Report Header */}
+      <CachedReplayBanner active={Boolean(report.isCached) && !demoMode} compact />
       <div className="bg-surface rounded-xl border border-border p-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center space-x-2 text-xs">

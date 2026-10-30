@@ -1,9 +1,17 @@
 import * as fs from "fs";
 import * as path from "path";
 import { InspectionReport } from "@viaguard/core";
+import { DATA_DIR } from "./paths.js";
 
-const DATA_DIR = path.resolve(process.cwd(), "data");
 const REPORTS_FILE = path.join(DATA_DIR, "reports.json");
+
+// Isolated in-memory store used strictly when NODE_ENV === "test"
+// so automated tests never pollute data/reports.json with mock fixtures.
+let inMemoryTestReports: InspectionReport[] = [];
+
+function isTestEnv(): boolean {
+  return process.env.NODE_ENV === "test";
+}
 
 function ensureDataDir(): void {
   if (!fs.existsSync(DATA_DIR)) {
@@ -12,6 +20,9 @@ function ensureDataDir(): void {
 }
 
 function loadAllReports(): InspectionReport[] {
+  if (isTestEnv()) {
+    return [...inMemoryTestReports];
+  }
   ensureDataDir();
   if (!fs.existsSync(REPORTS_FILE)) {
     return [];
@@ -26,8 +37,11 @@ function loadAllReports(): InspectionReport[] {
 }
 
 function saveAllReports(reports: InspectionReport[]): void {
+  if (isTestEnv()) {
+    inMemoryTestReports = [...reports];
+    return;
+  }
   ensureDataDir();
-  // Atomic write via temp file
   const tmpFile = `${REPORTS_FILE}.tmp.${Date.now()}`;
   fs.writeFileSync(tmpFile, JSON.stringify(reports, null, 2), "utf-8");
   fs.renameSync(tmpFile, REPORTS_FILE);
@@ -80,4 +94,3 @@ export const storage = {
     return false;
   },
 };
-

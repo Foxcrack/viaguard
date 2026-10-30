@@ -52,7 +52,8 @@ export const api = {
   async analyzeRoadDamage(
     file: File | Blob,
     location?: { latitude: number; longitude: number; source: "browser" | "manual" },
-    onProgress?: (progress: ProgressState) => void
+    onProgress?: (progress: ProgressState) => void,
+    demoMode?: boolean
   ): Promise<InspectionReport> {
     const formData = new FormData();
     formData.append("image", file);
@@ -60,6 +61,9 @@ export const api = {
       formData.append("latitude", location.latitude.toString());
       formData.append("longitude", location.longitude.toString());
       formData.append("source", location.source);
+    }
+    if (demoMode === true) {
+      formData.append("demoMode", "true");
     }
 
     // Use async background job with SSE for responsive progress feedback
@@ -115,11 +119,15 @@ export const api = {
   async analyzeConstructionProgress(
     beforeFile: File | Blob,
     afterFile: File | Blob,
-    onProgress?: (progress: ProgressState) => void
+    onProgress?: (progress: ProgressState) => void,
+    demoMode?: boolean
   ): Promise<InspectionReport> {
     const formData = new FormData();
     formData.append("before", beforeFile);
     formData.append("after", afterFile);
+    if (demoMode === true) {
+      formData.append("demoMode", "true");
+    }
 
     const res = await fetch("/api/construction/analyze?async=true", {
       method: "POST",

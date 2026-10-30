@@ -1,5 +1,5 @@
-import dotenv from "dotenv";
-dotenv.config();
+import { loadEnv } from "./paths.js";
+loadEnv();
 
 import sharp from "sharp";
 import {

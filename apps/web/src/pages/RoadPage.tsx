@@ -5,6 +5,7 @@ import { InspectionReport } from "@viaguard/core";
 import { MaskOverlayViewer } from "../components/MaskOverlayViewer.tsx";
 import { InspectionMap } from "../components/InspectionMap.tsx";
 import { AnimatedList } from "../components/react-bits/AnimatedList.tsx";
+import { useDemoMode, CachedReplayBanner } from "../context/DemoModeContext.tsx";
 import {
   UploadCloud,
   MapPin,
@@ -31,6 +32,7 @@ export const RoadPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [privacyBlur, setPrivacyBlur] = useState(true);
+  const { demoMode } = useDemoMode();
 
   useEffect(() => {
     api.getSamples().then((all) => {
@@ -90,7 +92,8 @@ export const RoadPage: React.FC = () => {
       const result = await api.analyzeRoadDamage(
         selectedFile,
         location || undefined,
-        (p) => setProgress(p)
+        (p) => setProgress(p),
+        demoMode
       );
       setReport(result);
     } catch (err: any) {
@@ -318,6 +321,7 @@ export const RoadPage: React.FC = () => {
       ) : (
         /* Results View */
         <div className="space-y-8">
+          <CachedReplayBanner active={Boolean(report.isCached) && !demoMode} compact />
           {/* Top Banner: Severity & Urgency */}
           <div
             className={`p-6 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${

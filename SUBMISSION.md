@@ -81,7 +81,7 @@ Viaguard depends strictly on Meta's models through the official Meta Model API:
 - [x] **Git History Proof**: Commit history proves all development took place between Oct 27 and Nov 4, 2026.
 - [x] **No Secrets Committed**: `.env` is strictly gitignored; `.env.example` provides empty placeholders.
 - [x] **Meta Models Verified**: Strictly powered by `sam-3.1` and `muse-spark-1.3` via the Meta Model API.
-- [x] **Offline Resilience**: Demo Mode fallback verified for seamless judge evaluation.
-- [x] **Tests Passing**: 21 unit and integration tests passing (`pnpm test`).
-- [x] **Submission Deadline**: Submitted before November 4, 2026, 9:00 PM ET via https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit
+- [x] **Opt-In Honest Demo Mode**: Demo Mode never activates silently; it only runs when explicitly turned on by the user, displays a visible `"Replaying cached real responses"` banner, and replays exclusively real Meta Model API responses recorded via `pnpm record:demo`.
+- [x] **Tests Passing**: Automated unit and integration tests passing (`pnpm test`).
+- [x] **Submission Portal**: Official submission via https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit before November 4, 2026, 9:00 PM ET.
 

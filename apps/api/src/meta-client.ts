@@ -14,8 +14,8 @@ import {
   StructuredReport,
   StructuredReportSchema,
   DamageFinding,
-  DEFAULT_ROAD_CONCEPTS,
 } from "@viaguard/core";
+import { CACHE_DIR } from "./paths.js";
 
 // Token Usage Tracker
 export const tokenTracker = {
@@ -35,9 +35,15 @@ export const tokenTracker = {
   },
 };
 
-// Disk Cache Setup
-const CACHE_DIR = path.resolve(process.cwd(), "data", "cache");
-function ensureCacheDir() {
+interface VerifiedCacheEnvelope<T> {
+  recordedFromLiveApi: true;
+  recordedAt: string;
+  model: string;
+  imageHash: string;
+  payload: T;
+}
+
+function ensureCacheDir(): void {
   if (!fs.existsSync(CACHE_DIR)) {
     fs.mkdirSync(CACHE_DIR, { recursive: true });
   }
@@ -50,13 +56,14 @@ function getCacheKey(model: string, prompt: string, imageHash: string): string {
     .digest("hex");
 }
 
-function getCachedResult<T>(key: string): T | null {
+function getVerifiedCachedResult<T>(key: string): T | null {
   try {
-    ensureCacheDir();
     const filePath = path.join(CACHE_DIR, `${key}.json`);
-    if (fs.existsSync(filePath)) {
-      const raw = fs.readFileSync(filePath, "utf-8");
-      return JSON.parse(raw) as T;
+    if (!fs.existsSync(filePath)) return null;
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const parsed = JSON.parse(raw) as Partial<VerifiedCacheEnvelope<T>>;
+    if (parsed && parsed.recordedFromLiveApi === true && parsed.payload !== undefined) {
+      return parsed.payload;
     }
   } catch (err) {
     console.warn(`[Cache Read Warning] Failed reading cache key ${key}:`, err);
@@ -64,21 +71,44 @@ function getCachedResult<T>(key: string): T | null {
   return null;
 }
 
-function setCachedResult<T>(key: string, data: T): void {
+function setVerifiedCachedResult<T>(
+  key: string,
+  model: string,
+  imageHash: string,
+  payload: T
+): void {
   try {
     ensureCacheDir();
+    const envelope: VerifiedCacheEnvelope<T> = {
+      recordedFromLiveApi: true,
+      recordedAt: new Date().toISOString(),
+      model,
+      imageHash,
+      payload,
+    };
     const filePath = path.join(CACHE_DIR, `${key}.json`);
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+    fs.writeFileSync(filePath, JSON.stringify(envelope, null, 2), "utf-8");
   } catch (err) {
     console.warn(`[Cache Write Warning] Failed writing cache key ${key}:`, err);
   }
+}
+
+function stripMarkdownJsonFences(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("```")) {
+    return trimmed
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
+  }
+  return trimmed;
 }
 
 export function getMetaClient(): OpenAI {
   const apiKey = process.env.MODEL_API_KEY;
   if (!apiKey || apiKey.trim() === "") {
     throw new Error(
-      "Missing MODEL_API_KEY environment variable. Please set MODEL_API_KEY in your .env file or environment."
+      "Missing MODEL_API_KEY environment variable. Set MODEL_API_KEY in .env at the project root to run live Meta Model API calls."
     );
   }
 
@@ -101,7 +131,6 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
       attempt++;
       const status = err?.status || err?.statusCode || 0;
 
-      // Permanent non-retriable errors
       if (status === 400) {
         throw new Error(
           `[Meta API 400 Bad Request] The request was invalid: ${err.message}`
@@ -139,6 +168,8 @@ export async function understandSceneWithMuseSpark(options: {
   imageHash: string;
   moduleType: "road" | "construction";
   mimeType?: string;
+  useCache?: boolean;
+  recordToCache?: boolean;
 }): Promise<{ scene: SceneUnderstanding; isCached: boolean }> {
   const model = "muse-spark-1.3";
   const prompt =
@@ -163,8 +194,14 @@ Return a strictly valid JSON object matching this schema:
 Return only JSON with no markdown wrapping or preamble.`;
 
   const cacheKey = getCacheKey(model, prompt, options.imageHash);
-  const cached = getCachedResult<SceneUnderstanding>(cacheKey);
-  if (cached) {
+
+  if (options.useCache) {
+    const cached = getVerifiedCachedResult<SceneUnderstanding>(cacheKey);
+    if (!cached) {
+      throw new Error(
+        "No cached real API response found in data/cache/ for this image. Set MODEL_API_KEY in .env and run 'pnpm record:demo <image>' first, or turn off Demo Mode."
+      );
+    }
     return { scene: cached, isCached: true };
   }
 
@@ -198,35 +235,15 @@ Return only JSON with no markdown wrapping or preamble.`;
     return rawText;
   };
 
-  let rawJson = "";
-  try {
-    rawJson = await withRetry(runCall);
-  } catch (err) {
-    console.warn("[Muse Spark Step 2] API call failed, attempting retry:", err);
-    rawJson = await withRetry(runCall, 1);
+  const rawJson = await withRetry(runCall);
+  const parsed = JSON.parse(stripMarkdownJsonFences(rawJson));
+  const validated = SceneUnderstandingSchema.parse(parsed);
+
+  if (options.recordToCache) {
+    setVerifiedCachedResult(cacheKey, model, options.imageHash, validated);
   }
 
-  try {
-    const parsed = JSON.parse(rawJson);
-    const validated = SceneUnderstandingSchema.parse(parsed);
-    setCachedResult(cacheKey, validated);
-    return { scene: validated, isCached: false };
-  } catch (parseError) {
-    console.warn(
-      "[Muse Spark Step 2] Failed to parse strict JSON. Falling back to default concepts.",
-      parseError
-    );
-    const fallback: SceneUnderstanding = {
-      scene_type: options.moduleType === "road" ? "paved road surface" : "construction zone",
-      visible_damage_types:
-        options.moduleType === "road"
-          ? [...DEFAULT_ROAD_CONCEPTS]
-          : ["scaffolding", "concrete wall", "debris"],
-      overall_condition: "unspecified",
-      notes: "Auto-fallback invoked due to non-JSON model response.",
-    };
-    return { scene: fallback, isCached: false };
-  }
+  return { scene: validated, isCached: false };
 }
 
 /**
@@ -239,13 +256,20 @@ export async function segmentConceptWithSAM(options: {
   imageWidth: number;
   imageHeight: number;
   mimeType?: string;
+  useCache?: boolean;
+  recordToCache?: boolean;
 }): Promise<{ findings: DamageFinding[]; isCached: boolean }> {
   const model = "sam-3.1";
   const concept = options.concept.trim();
   const cacheKey = getCacheKey(model, `concept:${concept}`, options.imageHash);
 
-  const cached = getCachedResult<DamageFinding[]>(cacheKey);
-  if (cached) {
+  if (options.useCache) {
+    const cached = getVerifiedCachedResult<DamageFinding[]>(cacheKey);
+    if (!cached) {
+      throw new Error(
+        `No cached real SAM 3.1 response found in data/cache/ for concept "${concept}". Run 'pnpm record:demo <image>' with MODEL_API_KEY set first.`
+      );
+    }
     return { findings: cached, isCached: true };
   }
 
@@ -287,19 +311,16 @@ export async function segmentConceptWithSAM(options: {
     const totalImagePixels = Math.max(options.imageWidth * options.imageHeight, 1);
     const findings: DamageFinding[] = [];
 
-    // Pair mask records with boxes or bounds
     for (let i = 0; i < maskRecords.length; i++) {
       const maskRec = maskRecords[i];
       const boxRec = boxRecords[i];
 
-      // Decode 1-bit mask to row-major raster
       const raster = decodeMaskToRaster(maskRec.mask);
       let activePixels = 0;
       for (let p = 0; p < raster.length; p++) {
         if (raster[p] === 1) activePixels++;
       }
 
-      // Convert mask to scalable SVG path
       let svgPath: string | undefined;
       try {
         svgPath = decodeMaskToSVGPath(maskRec.mask);
@@ -311,8 +332,7 @@ export async function segmentConceptWithSAM(options: {
         ((activePixels / totalImagePixels) * 100).toFixed(2)
       );
 
-      const confidence =
-        maskRec.confidence ?? boxRec?.confidence ?? 0.85;
+      const confidence = maskRec.confidence ?? boxRec?.confidence ?? 0.85;
 
       const boundingBox = boxRec
         ? {
@@ -353,7 +373,9 @@ export async function segmentConceptWithSAM(options: {
   };
 
   const findings = await withRetry(runSegmentation);
-  setCachedResult(cacheKey, findings);
+  if (options.recordToCache) {
+    setVerifiedCachedResult(cacheKey, model, options.imageHash, findings);
+  }
   return { findings, isCached: false };
 }
 
@@ -368,6 +390,8 @@ export async function writeReportWithMuseSpark(options: {
   severityLevel: string;
   imageHash: string;
   constructionDiffSummary?: string;
+  useCache?: boolean;
+  recordToCache?: boolean;
 }): Promise<{ report: StructuredReport; isCached: boolean }> {
   const model = "muse-spark-1.3";
   const findingsSummary = options.findings
@@ -412,8 +436,14 @@ Generate a concise, professional report formatted as JSON matching this schema:
 Return only JSON with no markdown wrapping.`;
 
   const cacheKey = getCacheKey(model, prompt, options.imageHash);
-  const cached = getCachedResult<StructuredReport>(cacheKey);
-  if (cached) {
+
+  if (options.useCache) {
+    const cached = getVerifiedCachedResult<StructuredReport>(cacheKey);
+    if (!cached) {
+      throw new Error(
+        "No cached real Muse Spark report found in data/cache/ for this image. Run 'pnpm record:demo <image>' with MODEL_API_KEY set first."
+      );
+    }
     return { report: cached, isCached: true };
   }
 
@@ -441,9 +471,11 @@ Return only JSON with no markdown wrapping.`;
   };
 
   const rawJson = await withRetry(runCall);
-  const parsed = JSON.parse(rawJson);
+  const parsed = JSON.parse(stripMarkdownJsonFences(rawJson));
   const validated = StructuredReportSchema.parse(parsed);
 
-  setCachedResult(cacheKey, validated);
+  if (options.recordToCache) {
+    setVerifiedCachedResult(cacheKey, model, options.imageHash, validated);
+  }
   return { report: validated, isCached: false };
 }

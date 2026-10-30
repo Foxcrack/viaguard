@@ -18,6 +18,7 @@ describe("Viaguard Backend API Endpoints", () => {
     expect(data.version).toBe("0.1.0");
     expect(data.models.vision).toBe("muse-spark-1.3");
     expect(data.models.segmentation).toBe("sam-3.1");
+    expect(typeof data.demoModeDefault).toBe("boolean");
   });
 
   it("GET /api/demo/samples returns bundled sample images", async () => {
@@ -40,6 +41,57 @@ describe("Viaguard Backend API Endpoints", () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toContain("Missing required 'image'");
+  });
+
+  it("POST /api/road/analyze never silently activates demo mode when MODEL_API_KEY is missing", async () => {
+    const prevKey = process.env.MODEL_API_KEY;
+    const prevDemo = process.env.DEMO_MODE;
+    delete process.env.MODEL_API_KEY;
+    process.env.DEMO_MODE = "false";
+
+    try {
+      const imgBuf = await sharp({
+        create: { width: 120, height: 120, channels: 3, background: { r: 60, g: 60, b: 60 } },
+      })
+        .jpeg()
+        .toBuffer();
+
+      const formData = new FormData();
+      formData.append("image", new Blob([imgBuf], { type: "image/jpeg" }), "road-sample-pothole.jpg");
+
+      const res = await app.request("/api/road/analyze", {
+        method: "POST",
+        body: formData,
+      });
+
+      expect(res.status).toBe(500);
+      const data = await res.json();
+      expect(data.error).toContain("MODEL_API_KEY");
+    } finally {
+      if (prevKey !== undefined) process.env.MODEL_API_KEY = prevKey;
+      if (prevDemo !== undefined) process.env.DEMO_MODE = prevDemo;
+    }
+  });
+
+  it("POST /api/road/analyze in explicit demoMode rejects unrecorded images instead of faking data", async () => {
+    const imgBuf = await sharp({
+      create: { width: 111, height: 111, channels: 3, background: { r: 42, g: 55, b: 68 } },
+    })
+      .jpeg()
+      .toBuffer();
+
+    const formData = new FormData();
+    formData.append("image", new Blob([imgBuf], { type: "image/jpeg" }), "unrecorded.jpg");
+    formData.append("demoMode", "true");
+
+    const res = await app.request("/api/road/analyze", {
+      method: "POST",
+      body: formData,
+    });
+
+    expect(res.status).toBe(500);
+    const data = await res.json();
+    expect(data.error).toContain("No cached real API response");
   });
 
   it("POST /api/construction/analyze rejects requests without before/after images", async () => {
@@ -90,7 +142,6 @@ describe("Viaguard Backend API Endpoints", () => {
 
     await storage.save(mockReport);
 
-    // Test HTML export
     const resHtml = await app.request(`/api/reports/${mockReport.id}/export`);
     expect(resHtml.status).toBe(200);
     const htmlText = await resHtml.text();
@@ -98,7 +149,6 @@ describe("Viaguard Backend API Endpoints", () => {
     expect(htmlText).toContain("HIGH SEVERITY (78/100)");
     expect(htmlText).toContain("Cold patch void immediately");
 
-    // Test JSON export
     const resJson = await app.request(`/api/reports/${mockReport.id}/export?format=json`);
     expect(resJson.status).toBe(200);
     const jsonData = await resJson.json();

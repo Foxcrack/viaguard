@@ -133,6 +133,14 @@ export function generateHtmlReport(report: InspectionReport): string {
       <a class="btn" href="?format=json" target="_blank">📄 View Raw JSON</a>
     </div>
 
+    ${
+      report.isCached
+        ? `<div style="margin-bottom: 20px; padding: 10px 14px; border-radius: 6px; background: #fffbeb; border: 1px solid #f59e0b; color: #92400e; font-size: 13px; font-weight: 600;">
+      Replaying cached real responses — This report was replayed in opt-in Demo Mode from verified Meta Model API responses.
+    </div>`
+        : ""
+    }
+
     <div class="header">
       <div>
         <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin-bottom: 4px;">

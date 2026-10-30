@@ -1,5 +1,5 @@
-import dotenv from "dotenv";
-dotenv.config();
+import { loadEnv, SAMPLES_DIR, UPLOAD_DIR } from "./paths.js";
+loadEnv();
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -15,7 +15,6 @@ import { tokenTracker } from "./meta-client.js";
 
 export const app = new Hono();
 
-// Enable CORS for web frontend
 app.use(
   "*",
   cors({
@@ -33,6 +32,8 @@ app.get("/api/health", (c) => {
     service: "viaguard-api",
     timestamp: new Date().toISOString(),
     tokensTracked: tokenTracker.totalTokens,
+    demoModeDefault: process.env.DEMO_MODE === "true",
+    liveApiConfigured: Boolean(process.env.MODEL_API_KEY && process.env.MODEL_API_KEY.trim() !== ""),
     models: {
       vision: "muse-spark-1.3",
       segmentation: "sam-3.1",
@@ -43,9 +44,8 @@ app.get("/api/health", (c) => {
 // 2. Static File Serving for /uploads
 app.get("/uploads/:filename", (c) => {
   const filename = c.req.param("filename");
-  // Prevent directory traversal
   const safeFilename = path.basename(filename);
-  const filePath = path.resolve(process.cwd(), "uploads", safeFilename);
+  const filePath = path.join(UPLOAD_DIR, safeFilename);
 
   if (!fs.existsSync(filePath)) {
     return c.text("File not found", 404);
@@ -65,13 +65,12 @@ app.get("/uploads/:filename", (c) => {
 
 // 3. Demo Samples Endpoint
 app.get("/api/demo/samples", (c) => {
-  const samplesDir = path.resolve(process.cwd(), "..", "web", "public", "samples");
-  if (!fs.existsSync(samplesDir)) {
+  if (!fs.existsSync(SAMPLES_DIR)) {
     return c.json({ samples: [] });
   }
 
   const files = fs
-    .readdirSync(samplesDir)
+    .readdirSync(SAMPLES_DIR)
     .filter((f) => /\.(jpe?g|png|webp)$/i.test(f));
 
   const samples = files.map((fileName) => {
@@ -193,13 +192,17 @@ app.post("/api/road/analyze", async (c) => {
       }
     }
 
+    const explicitDemoMode =
+      formData["demoMode"] === "true" ||
+      c.req.query("demoMode") === "true" ||
+      process.env.DEMO_MODE === "true";
+
     const isAsync = c.req.query("async") === "true";
 
     if (isAsync) {
       const jobId = `job-road-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       jobManager.createJob(jobId);
 
-      // Execute pipeline asynchronously
       (async () => {
         try {
           jobManager.updateJob(jobId, { status: "processing", percent: 10 });
@@ -207,6 +210,7 @@ app.post("/api/road/analyze", async (c) => {
             imageBuffer: buffer,
             originalName,
             clientLocation,
+            demoMode: explicitDemoMode,
             onProgress: (step, percent) => {
               jobManager.updateJob(jobId, { step, percent });
             },
@@ -218,7 +222,7 @@ app.post("/api/road/analyze", async (c) => {
             report,
           });
         } catch (err: any) {
-          console.error(`[Job ${jobId} Failed]:`, err);
+          console.error(`[Job ${jobId} Failed]:`, err.message || err);
           jobManager.updateJob(jobId, {
             status: "failed",
             error: err.message || "Pipeline analysis failed.",
@@ -228,16 +232,16 @@ app.post("/api/road/analyze", async (c) => {
 
       return c.json({ jobId, status: "pending" });
     } else {
-      // Synchronous execution
       const report = await runRoadPipeline({
         imageBuffer: buffer,
         originalName,
         clientLocation,
+        demoMode: explicitDemoMode,
       });
       return c.json(report);
     }
   } catch (err: any) {
-    console.error("[Road Analyze Error]:", err);
+    console.error("[Road Analyze Error]:", err.message || err);
     return c.json({ error: err.message || "Failed to process road inspection." }, 500);
   }
 });
@@ -259,6 +263,11 @@ app.post("/api/construction/analyze", async (c) => {
     const beforeBuffer = Buffer.from(await beforeFile.arrayBuffer());
     const afterBuffer = Buffer.from(await afterFile.arrayBuffer());
 
+    const explicitDemoMode =
+      formData["demoMode"] === "true" ||
+      c.req.query("demoMode") === "true" ||
+      process.env.DEMO_MODE === "true";
+
     const isAsync = c.req.query("async") === "true";
 
     if (isAsync) {
@@ -271,6 +280,7 @@ app.post("/api/construction/analyze", async (c) => {
           const report = await runConstructionPipeline({
             beforeBuffer,
             afterBuffer,
+            demoMode: explicitDemoMode,
             onProgress: (step, percent) => {
               jobManager.updateJob(jobId, { step, percent });
             },
@@ -282,7 +292,7 @@ app.post("/api/construction/analyze", async (c) => {
             report,
           });
         } catch (err: any) {
-          console.error(`[Job ${jobId} Failed]:`, err);
+          console.error(`[Job ${jobId} Failed]:`, err.message || err);
           jobManager.updateJob(jobId, {
             status: "failed",
             error: err.message || "Pipeline analysis failed.",
@@ -295,11 +305,12 @@ app.post("/api/construction/analyze", async (c) => {
       const report = await runConstructionPipeline({
         beforeBuffer,
         afterBuffer,
+        demoMode: explicitDemoMode,
       });
       return c.json(report);
     }
   } catch (err: any) {
-    console.error("[Construction Analyze Error]:", err);
+    console.error("[Construction Analyze Error]:", err.message || err);
     return c.json({ error: err.message || "Failed to process construction inspection." }, 500);
   }
 });

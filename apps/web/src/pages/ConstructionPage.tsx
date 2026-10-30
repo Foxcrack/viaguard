@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { api, DemoSample, ProgressState } from "../api/client.ts";
 import { InspectionReport } from "@viaguard/core";
 import { BeforeAfterSlider } from "../components/BeforeAfterSlider.tsx";
+import { useDemoMode, CachedReplayBanner } from "../context/DemoModeContext.tsx";
 import {
   HardHat,
   UploadCloud,
@@ -26,6 +27,7 @@ export const ConstructionPage: React.FC = () => {
   const [report, setReport] = useState<InspectionReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showOverlays, setShowOverlays] = useState(true);
+  const { demoMode } = useDemoMode();
 
   useEffect(() => {
     api.getSamples().then((all) => {
@@ -94,7 +96,8 @@ export const ConstructionPage: React.FC = () => {
       const result = await api.analyzeConstructionProgress(
         beforeFile,
         afterFile,
-        (p) => setProgress(p)
+        (p) => setProgress(p),
+        demoMode
       );
       setReport(result);
     } catch (err: any) {
@@ -299,6 +302,7 @@ export const ConstructionPage: React.FC = () => {
       ) : (
         /* Results View */
         <div className="space-y-8">
+          <CachedReplayBanner active={Boolean(report.isCached) && !demoMode} compact />
           {/* Progress Assessment Header */}
           {report.constructionDiff && (
             <div

@@ -13,6 +13,8 @@
 
 **Viaguard was created 100% from scratch during the Meta Global AI Developer Hackathon (October 27 – November 4, 2026)** under the **Indie Developer** track (**Theme: Build for Your World**). Every commit, package, interface, and test in this repository was authored during the official hackathon window.
 
+- **Official Hackathon Submission Portal**: https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit
+
 ---
 
 ## 💡 Overview
@@ -158,11 +160,17 @@ pnpm analyze:sample apps/web/public/samples/road-sample-pothole.jpg
 
 ---
 
-## 🛡️ Demo Resilience Mode
+## 🛡️ Opt-In Demo Mode (Verified Real Cache Replay)
 
-To safeguard against transient network issues or offline evaluation during hackathon judging:
-- Bundled synthetic sample inspection photos are included in `apps/web/public/samples/`.
-- If `DEMO_MODE=true` or offline, Viaguard replays verified pre-cached model outputs clearly marked with a `⚡ Pre-cached Response (Demo Mode)` badge. The default mode is always live.
+Demo Mode is strictly **opt-in** and never activates silently when `MODEL_API_KEY` is missing or when a live API request fails:
+- **Default Mode (Live API)**: Every inspection calls `muse-spark-1.3` and `sam-3.1` live via `https://api.meta.ai/v1`. If `MODEL_API_KEY` is unset or an API error occurs, Viaguard surfaces a clear diagnostic error instead of switching modes.
+- **Recording Real Demo Responses**: Once `MODEL_API_KEY` is configured in `.env`, record real Meta Model API responses into `data/cache/` with:
+  ```bash
+  pnpm record:demo apps/web/public/samples/road-sample-pothole.jpg
+  pnpm record:demo apps/web/public/samples/road-sample-cracks.jpg
+  pnpm record:demo apps/web/public/samples/construction-before-site.jpg apps/web/public/samples/construction-after-site.jpg
+  ```
+- **Replaying Cached Real Responses**: Only when a user explicitly enables Demo Mode (via the UI switch or `DEMO_MODE=true`), Viaguard replays verified real API responses from `data/cache/` and displays a persistent **"Replaying cached real responses"** banner.
 
 ---
 
