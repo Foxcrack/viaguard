@@ -10,6 +10,7 @@ import { useMotionPreferences } from "@/hooks/useMotionPreferences";
 import { api, DemoSample, ProgressState } from "../api/client.ts";
 import { InspectionReport } from "@viaguard/core";
 import { MaskOverlayViewer } from "../components/MaskOverlayViewer.tsx";
+import { SeverityBreakdownCard } from "../components/SeverityBreakdownCard.tsx";
 import { InspectionMap } from "../components/InspectionMap.tsx";
 import { useDemoMode, CachedReplayBanner } from "../context/DemoModeContext.tsx";
 import {
@@ -41,7 +42,9 @@ export const RoadPage: React.FC = () => {
   const [report, setReport] = useState<InspectionReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
   const [privacyBlur, setPrivacyBlur] = useState(true);
+  const activeFindingId = hoveredFindingId || selectedFindingId;
 
   useEffect(() => {
     api.getSamples().then((all) => {
@@ -124,13 +127,14 @@ export const RoadPage: React.FC = () => {
     setError(null);
     setProgress(null);
     setSelectedFindingId(null);
+    setHoveredFindingId(null);
   };
 
   const animatedFindingItems: AnimatedListEntry[] = useMemo(() => {
     if (!report) return [];
-    return report.findings.map((f) => ({
+    return report.findings.map((f, idx) => ({
       id: f.id,
-      title: f.concept,
+      title: `${idx + 1}. ${f.concept}`,
       description: `Relative Area: ${f.relativeAreaPercent}%`,
       meta: `${(f.confidence * 100).toFixed(0)}%`,
     }));
@@ -461,7 +465,7 @@ export const RoadPage: React.FC = () => {
                 imageWidth={report.imageWidth}
                 imageHeight={report.imageHeight}
                 findings={report.findings}
-                selectedFindingId={selectedFindingId}
+                selectedFindingId={activeFindingId}
                 onSelectFinding={setSelectedFindingId}
                 title="SAM 3.1 Road Damage Mask Segmentation"
                 privacyBlurApplied={report.privacyBlurApplied !== false}
@@ -505,21 +509,33 @@ export const RoadPage: React.FC = () => {
                     renderItem={(_item, idx, isHighlighted) => {
                       const f = report.findings[idx];
                       if (!f) return null;
-                      const active = selectedFindingId === f.id || isHighlighted;
+                      const active = activeFindingId === f.id || isHighlighted;
                       return (
                         <div
-                          onMouseEnter={() => setSelectedFindingId(f.id)}
+                          onMouseEnter={() => setHoveredFindingId(f.id)}
+                          onMouseLeave={() => setHoveredFindingId(null)}
                           className={`w-full py-1 text-xs transition ${
                             active ? "text-white" : "text-slate-300"
                           }`}
                         >
                           <div className="flex items-center justify-between font-semibold">
-                            <span className="capitalize">{f.concept}</span>
+                            <span className="inline-flex items-center space-x-2">
+                              <span
+                                className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full font-mono text-[11px] font-bold border ${
+                                  selectedFindingId === f.id
+                                    ? "bg-blue-500 text-white border-blue-400"
+                                    : "bg-slate-900 text-slate-200 border-slate-600"
+                                }`}
+                              >
+                                {idx + 1}
+                              </span>
+                              <span className="capitalize">{f.concept}</span>
+                            </span>
                             <span className="text-blue-400 font-mono tabular-nums">
                               {(f.confidence * 100).toFixed(0)}% conf
                             </span>
                           </div>
-                          <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1 font-mono tabular-nums">
+                          <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1 pl-7 font-mono tabular-nums">
                             <span>Area: {f.relativeAreaPercent}%</span>
                             <span>
                               {f.boundingBox.width}&times;{f.boundingBox.height}px
@@ -547,6 +563,9 @@ export const RoadPage: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* Deterministic Severity Score Breakdown */}
+          <SeverityBreakdownCard report={report} />
         </SectionReveal>
       )}
     </div>

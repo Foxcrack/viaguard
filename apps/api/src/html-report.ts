@@ -1,4 +1,4 @@
-import { InspectionReport } from "@viaguard/core";
+import { InspectionReport, calculateSeverity } from "@viaguard/core";
 
 export function generateHtmlReport(report: InspectionReport): string {
   const severityColors = {
@@ -9,6 +9,14 @@ export function generateHtmlReport(report: InspectionReport): string {
   };
 
   const currentSev = severityColors[report.severityLevel] || severityColors.low;
+  const breakdown =
+    report.severityBreakdown ??
+    calculateSeverity(report.afterFindings ?? report.findings).breakdown;
+  const typeWeightEntries = Object.entries(breakdown.appliedTypeWeights);
+  const typeWeightsText =
+    typeWeightEntries.length > 0
+      ? typeWeightEntries.map(([concept, weight]) => `${concept} (${weight}×)`).join(", ")
+      : "none (0 active damage instances)";
 
   const findingsRows = report.findings
     .map(
@@ -187,6 +195,33 @@ export function generateHtmlReport(report: InspectionReport): string {
         `
             : ""
         }
+      </div>
+    </div>
+
+    <div style="margin-bottom: 24px; padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h3 style="font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #475569; margin: 0 0 12px 0;">
+        Severity Score Breakdown (${breakdown.finalScore}/100)
+      </h3>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 12px;">
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+          <div style="color: #64748b; font-size: 11px;">Total Damaged Area (max 50)</div>
+          <div style="font-weight: 700; font-size: 15px; color: #0f172a; margin-top: 2px;">${breakdown.totalAreaScore} pts</div>
+          <div style="color: #64748b; font-size: 11px; margin-top: 2px;">Raw: ${breakdown.rawTotalAreaPercent}% &bull; Weighted: ${breakdown.weightedTotalArea}%</div>
+        </div>
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+          <div style="color: #64748b; font-size: 11px;">Largest Single Defect (max 40)</div>
+          <div style="font-weight: 700; font-size: 15px; color: #0f172a; margin-top: 2px;">${breakdown.largestInstanceScore} pts</div>
+          <div style="color: #64748b; font-size: 11px; margin-top: 2px;">Raw: ${breakdown.largestInstanceRawAreaPercent}% &bull; Weighted: ${breakdown.largestInstanceWeightedArea}%</div>
+        </div>
+        <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+          <div style="color: #64748b; font-size: 11px;">Instance Count Bonus (max +10)</div>
+          <div style="font-weight: 700; font-size: 15px; color: #0f172a; margin-top: 2px;">+${breakdown.countBonus} pts</div>
+          <div style="color: #64748b; font-size: 11px; margin-top: 2px;">${breakdown.damageInstanceCount} defect(s) &bull; Avg conf: ${(breakdown.averageConfidence * 100).toFixed(0)}%</div>
+        </div>
+      </div>
+      <div style="margin-top: 10px; font-size: 11px; color: #475569;">
+        <strong>Type Weights Applied:</strong> ${typeWeightsText} &nbsp;|&nbsp;
+        <strong>Raw Unrounded Sum:</strong> ${breakdown.rawScore} &rarr; <strong>${breakdown.finalScore}/100</strong>
       </div>
     </div>
 

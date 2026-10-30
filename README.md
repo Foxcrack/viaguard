@@ -73,43 +73,62 @@ flowchart TD
 
 ---
 
-## 🧹 SAM 3.1 Concept Sanitizing, Confidence Filtering & NMS
+## 🧹 SAM 3.1 Post-Processing & Filtering Constants (`packages/core/src/filtering.ts`)
 
-To eliminate false-positive masks on plain asphalt or paint stripes and prevent overlapping duplicate detections, `packages/core/src/filtering.ts` enforces three post-processing stages before severity scoring and report generation:
+To eliminate false-positive masks on plain asphalt or paint stripes, drop sub-pixel speckle noise, and prevent overlapping duplicate detections, `packages/core/src/filtering.ts` enforces four post-processing stages before severity scoring and report generation:
 
 1. **Concept Sanitizing (`sanitizeConcept` / `sanitizeConcepts`)**:
    - Forces `muse-spark-1.3` (via structured schema + prompt + code enforcement) to emit **1-to-2-word plain nouns only** (e.g., `"pothole"`, `"crack"`, `"patch"`, `"manhole cover"`).
    - Rejects any concept longer than 2 words, any concept containing adjectives/modifiers (`"cracked"`, `"damaged"`, `"broken"`, `"worn"`), and paint/surface labels (`"road marking"`, `"road surface"`).
    - Road inspections **always** include `"pothole"` and `"crack"` alongside sanitized Muse Spark suggestions.
-2. **Per-Concept Confidence Thresholds** (exported constants in `@viaguard/core`):
+2. **Per-Concept Confidence Thresholds**:
    - `POTHOLE_MIN_CONFIDENCE = 0.5`: Discards `"pothole"` instances with SAM 3.1 confidence `< 0.5`.
    - `DEFAULT_MIN_CONFIDENCE = 0.6`: Discards all other concept instances with SAM 3.1 confidence `< 0.6`.
-3. **Cross-Instance Non-Maximum Suppression (`NMS_IOU_THRESHOLD = 0.5`)**:
+3. **Minimum Instance Size (`MIN_AREA_RATIO = 0.0015`)**:
+   - `MIN_AREA_RATIO = 0.0015` (`0.15%` of total image pixel area): Discards tiny distant specks or single-cluster SAM artifacts whose mask covers `< 0.15%` of the frame (`filterFindingsByMinArea`), as masks that small cannot be reliably measured from a street-level camera photo.
+4. **Cross-Instance Non-Maximum Suppression (`NMS_IOU_THRESHOLD = 0.5`)**:
    - Runs across **all** surviving instances regardless of concept label, computing pixel-level binary mask IoU (from `@meta-sam/parser` rasters) and bounding-box IoU. Whenever `IoU > 0.5`, only the highest-confidence instance is retained.
+
+In the frontend overlay (`apps/web/src/components/MaskOverlayViewer.tsx`), numbered badges (`1, 2, 3...`) match the right-hand findings list, bounding boxes are optional (off by default), visible default badges are collision-avoided and capped at `MAX_VISIBLE_BADGES = 8` (prioritizing highest confidence), and the full label callout appears only on hover or selection.
 
 ---
 
-## 📐 Deterministic Severity Scoring Formula
+## 📐 Deterministic Severity Scoring Formula & Constants (`packages/core/src/scoring.ts`)
 
-Viaguard does **not** hallucinate severity numbers. Severity is calculated deterministically in `packages/core/src/scoring.ts` strictly from the **filtered, NMS-deduplicated** findings:
+Viaguard does **not** hallucinate severity numbers. Severity is calculated deterministically in `packages/core/src/scoring.ts` strictly from the **filtered, size-checked, NMS-deduplicated** findings, and every report exposes the full `severityBreakdown` (`area`, `largest`, `count`, `confidence`, `type weights`).
 
-$$\text{RawScore} = (S_{\text{area}} + S_{\text{count}} + 5) \times \left(0.7 + 0.3 \times C_{\text{avg}}\right) \times \frac{W_{\max}}{1.2}$$
+Each active damage instance $i$ contributes an effective weighted area:
 
-- **Area Factor ($S_{\text{area}}$)**: $\min(\sum \text{relativeAreaPercent} \times 4.0, 60)$ (up to 60 points). In civic road inspection, 15%+ frame coverage of potholes represents severe roadbed failure.
-- **Count Factor ($S_{\text{count}}$)**: $\min(N_{\text{damage}} \times 7.0, 35)$ (up to 35 points).
-- **Confidence Factor ($C_{\text{avg}}$)**: Average detection confidence $\in [0, 1]$.
-- **Hazard Multiplier ($W_{\max}$)**: Maximum concept weight:
-  - Sinkhole: $1.5$
-  - Pothole: $1.4$ (vehicle damage / structural void hazard)
-  - Debris / Rut / Spall: $1.1$
-  - Crack: $1.0$ (water intrusion risk)
-  - Patch: $0.8$
-  - Manhole cover: $0.1$ (*neutral reference object; does not artificially escalate road hazard score*)
-- **Score Range**: Clamped to $[0, 100]$:
-  - `0 - 24`: **Low** (routine cosmetic wear)
-  - `25 - 54`: **Medium** (moderate cracking or single localized pothole)
-  - `55 - 79`: **High** (extensive pothole / multi-defect asphalt breakdown)
-  - `80 - 100`: **Critical** (deep hazardous void requiring emergency closure)
+$$e_i = \text{relativeAreaPercent}_i \times \text{confidence}_i \times w_i$$
+
+$$\text{Score} = \text{clamp}\!\Big(\text{round}\big(S_{\text{total}} + S_{\text{largest}} + S_{\text{count}}\big),\; 0,\; 100\Big)$$
+
+- **Total Damaged Area Term ($S_{\text{total}}$, dominant factor #1)**:
+  $$S_{\text{total}} = \min\!\left(\text{MAX\_TOTAL\_AREA\_SCORE},\; \text{TOTAL\_AREA\_SCORE\_FACTOR} \times \sum_i e_i\right)$$
+  - `TOTAL_AREA_SCORE_FACTOR = 4.5` (points per `1%` effective damaged frame area)
+  - `MAX_TOTAL_AREA_SCORE = 50` (up to `50` points)
+- **Largest Single Instance Area Term ($S_{\text{largest}}$, dominant factor #2)**:
+  $$S_{\text{largest}} = \min\!\left(\text{MAX\_LARGEST\_INSTANCE\_SCORE},\; \text{LARGEST\_INSTANCE\_SCORE\_FACTOR} \times \max_i e_i\right)$$
+  - `LARGEST_INSTANCE_SCORE_FACTOR = 5.0` (points per `1%` effective area of the single largest defect, ensuring one deep wheel-striking pothole outranks scattered micro-blemishes)
+  - `MAX_LARGEST_INSTANCE_SCORE = 40` (up to `40` points)
+- **Instance Count Bonus ($S_{\text{count}}$, capped minor term)**:
+  $$S_{\text{count}} = \min\!\left(\text{MAX\_COUNT\_BONUS},\; \text{COUNT\_BONUS\_PER\_INSTANCE} \times \sum_i \text{confidence}_i\right)$$
+  - `COUNT_BONUS_PER_INSTANCE = 1.25` (confidence-weighted points per defect)
+  - `MAX_COUNT_BONUS = 10` (strictly capped at `+10` so fragmented tiny detections never dominate total area)
+- **Concept Type Weights (`CONCEPT_WEIGHTS`)**:
+  - `sinkhole`: `1.5`
+  - `pothole`: `1.3` (structural pavement void / vehicle impact hazard)
+  - `steel rebar` / `rebar`: `1.2`
+  - `debris` / `rut` / `spall`: `1.1`
+  - `crack`: `1.0` (water intrusion & freeze/thaw propagation)
+  - `patch`: `0.7` (repaired surface wear)
+  - `puddle`: `0.6` (standing drainage water)
+  - `manhole cover`: `0` (neutral municipal utility fixture; excluded from damage scoring)
+- **Severity Level Bands**:
+  - `0 – 24`: **Low** (intact pavement or minor cosmetic wear)
+  - `25 – 54`: **Medium** (moderate localized cracking or small scattered defects)
+  - `55 – 79`: **High** (large structural pothole or extensive multi-defect asphalt breakdown)
+  - `80 – 100`: **Critical** (massive hazardous void or sinkhole requiring urgent intervention)
 
 ---
 
@@ -168,7 +187,7 @@ pnpm dev
 ```bash
 pnpm test
 ```
-Runs 34 Vitest tests validating concept sanitizing, confidence filtering, cross-concept NMS, severity scoring, area calculations, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
+Runs 36 Vitest tests validating concept sanitizing, confidence filtering, minimum mask area (`MIN_AREA_RATIO`), cross-concept NMS, area-dominant severity scoring & breakdown, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
 
 ### 6. Run Headless CLI Inspection
 ```bash

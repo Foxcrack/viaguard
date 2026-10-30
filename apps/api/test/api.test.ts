@@ -154,6 +154,8 @@ describe("Viaguard Backend API Endpoints", () => {
     const htmlText = await resHtml.text();
     expect(htmlText).toContain("Official Inspection Report");
     expect(htmlText).toContain("HIGH SEVERITY (78/100)");
+    expect(htmlText).toContain("Severity Score Breakdown");
+    expect(htmlText).toContain("pothole (1.3×)");
     expect(htmlText).toContain("Cold patch void immediately");
     expect(htmlText).toContain("Privacy blur: on");
 

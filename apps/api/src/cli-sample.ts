@@ -99,12 +99,32 @@ async function main() {
       `Privacy Blur:       ${report.privacyBlurApplied ? "on" : "off"} (${report.privacyRegionsBlurred} regions blurred)`
     );
     console.log(`Cached:             ${report.isCached ? "YES" : "NO"}`);
-    console.log(`Total Findings:     ${report.findings.length}`);
-    for (const f of report.findings) {
+    if (report.severityBreakdown) {
+      const b = report.severityBreakdown;
+      const weightsStr =
+        Object.entries(b.appliedTypeWeights)
+          .map(([k, v]) => `${k}=${v}x`)
+          .join(", ") || "none";
+      console.log("Severity Breakdown:");
       console.log(
-        `  - ${f.concept.padEnd(22)}: relativeArea=${f.relativeAreaPercent}% | confidence=${f.confidence} | bbox=[${f.boundingBox.x1}, ${f.boundingBox.y1}, ${f.boundingBox.x2}, ${f.boundingBox.y2}]`
+        `  - Total Area Score:   ${b.totalAreaScore} / 50 pts (raw=${b.rawTotalAreaPercent}%, weighted=${b.weightedTotalArea}%)`
       );
+      console.log(
+        `  - Largest Defect:     ${b.largestInstanceScore} / 40 pts (raw=${b.largestInstanceRawAreaPercent}%, weighted=${b.largestInstanceWeightedArea}%)`
+      );
+      console.log(
+        `  - Count Bonus:        +${b.countBonus} / 10 pts (${b.damageInstanceCount} instance(s))`
+      );
+      console.log(`  - Avg Confidence:     ${(b.averageConfidence * 100).toFixed(0)}% (${b.averageConfidence})`);
+      console.log(`  - Type Weights:       ${weightsStr}`);
+      console.log(`  - Raw -> Final Score: ${b.rawScore} -> ${b.finalScore}/100`);
     }
+    console.log(`Total Findings:     ${report.findings.length}`);
+    report.findings.forEach((f, idx) => {
+      console.log(
+        `  #${idx + 1} ${f.concept.padEnd(20)}: relativeArea=${f.relativeAreaPercent}% | confidence=${f.confidence} | bbox=[${f.boundingBox.x1}, ${f.boundingBox.y1}, ${f.boundingBox.x2}, ${f.boundingBox.y2}]`
+      );
+    });
     console.log("Summary:");
     console.log(`  "${report.summary}"`);
     console.log("==================================================");

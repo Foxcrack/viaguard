@@ -4,6 +4,7 @@ import { SectionReveal } from "@/components/SectionReveal";
 import { api } from "../api/client.ts";
 import { InspectionReport } from "@viaguard/core";
 import { MaskOverlayViewer } from "../components/MaskOverlayViewer.tsx";
+import { SeverityBreakdownCard } from "../components/SeverityBreakdownCard.tsx";
 import { InspectionMap } from "../components/InspectionMap.tsx";
 import { CachedReplayBanner, useDemoMode } from "../context/DemoModeContext.tsx";
 import { Printer, ArrowLeft, MapPin, Calendar, HardHat, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
@@ -13,7 +14,10 @@ export const ReportDetailPage: React.FC = () => {
   const [report, setReport] = useState<InspectionReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [hoveredFindingId, setHoveredFindingId] = useState<string | null>(null);
   const { demoMode } = useDemoMode();
+  const activeFindingId = hoveredFindingId || selectedFindingId;
 
   useEffect(() => {
     if (!id) return;
@@ -149,11 +153,18 @@ export const ReportDetailPage: React.FC = () => {
           imageWidth={report.imageWidth}
           imageHeight={report.imageHeight}
           findings={report.findings}
+          selectedFindingId={activeFindingId}
+          onSelectFinding={setSelectedFindingId}
           title={report.title}
           privacyBlurApplied={report.privacyBlurApplied !== false}
           privacyRegionsBlurred={report.privacyRegionsBlurred}
         />
       </div>
+
+      {/* Deterministic Severity Score Breakdown */}
+      <SectionReveal>
+        <SeverityBreakdownCard report={report} />
+      </SectionReveal>
 
       {/* Findings Table */}
       <SectionReveal>
@@ -162,6 +173,7 @@ export const ReportDetailPage: React.FC = () => {
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-background/80 border-b border-border text-slate-400 uppercase text-[11px]">
               <tr>
+                <th className="py-2.5 px-3 w-12 text-center">#</th>
                 <th className="py-2.5 px-3">Target Element</th>
                 <th className="py-2.5 px-3 text-center">Confidence</th>
                 <th className="py-2.5 px-3 text-center">Relative Area %</th>
@@ -169,16 +181,40 @@ export const ReportDetailPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {report.findings.map((f, i) => (
-                <tr key={f.id || i} className="hover:bg-slate-800/30">
-                  <td className="py-2.5 px-3 font-semibold text-white capitalize">{f.concept}</td>
-                  <td className="py-2.5 px-3 text-center font-mono tabular-nums">{(f.confidence * 100).toFixed(0)}%</td>
-                  <td className="py-2.5 px-3 text-center font-mono tabular-nums">{f.relativeAreaPercent}%</td>
-                  <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500 tabular-nums">
-                    [{f.boundingBox.x1}, {f.boundingBox.y1}, {f.boundingBox.x2}, {f.boundingBox.y2}]
-                  </td>
-                </tr>
-              ))}
+              {report.findings.map((f, i) => {
+                const isSelected = activeFindingId === f.id;
+                return (
+                  <tr
+                    key={f.id || i}
+                    onMouseEnter={() => setHoveredFindingId(f.id)}
+                    onMouseLeave={() => setHoveredFindingId(null)}
+                    onClick={() =>
+                      setSelectedFindingId(selectedFindingId === f.id ? null : f.id)
+                    }
+                    className={`cursor-pointer transition ${
+                      isSelected ? "bg-blue-500/15" : "hover:bg-slate-800/30"
+                    }`}
+                  >
+                    <td className="py-2.5 px-3 text-center">
+                      <span
+                        className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full font-mono text-[11px] font-bold border ${
+                          isSelected
+                            ? "bg-blue-500 text-white border-blue-400"
+                            : "bg-slate-900 text-slate-200 border-slate-600"
+                        }`}
+                      >
+                        {i + 1}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 font-semibold text-white capitalize">{f.concept}</td>
+                    <td className="py-2.5 px-3 text-center font-mono tabular-nums">{(f.confidence * 100).toFixed(0)}%</td>
+                    <td className="py-2.5 px-3 text-center font-mono tabular-nums">{f.relativeAreaPercent}%</td>
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-slate-500 tabular-nums">
+                      [{f.boundingBox.x1}, {f.boundingBox.y1}, {f.boundingBox.x2}, {f.boundingBox.y2}]
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

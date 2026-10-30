@@ -475,3 +475,67 @@ $ tsx src/check-meta.ts
     - `pothole`: `confidence = 0.69` (`69%`), `relativeAreaPercent = 6.72%`, `bbox = [419, 627, 1069, 1023]`.
   - Recomputed Severity: **`41/100 (medium)`**.
   - Privacy Blur: **`on` (`5` regions blurred)** — visually verified in stored `/uploads/1793341754934-77ab2a872434.jpg` that both pedestrians on/near the median and the visible front license plates on the background vehicles are completely blurred while the foreground pothole remains sharp.
+
+
+---
+
+## 2026-10-30 – Area-Dominant Severity Formula, Minimum Instance Size (`MIN_AREA_RATIO`) & Label Decluttering
+
+### 1. Root Cause Analysis on Real Street Photos (Photo A vs. Photo B)
+- **Severity Inversion**: Under the previous formula, `countScore` contributed up to `35` points (`7 × N`). Consequently, **Photo A** (`1` large deep crosswalk pothole covering `6.72%` of the frame at `0.69` confidence) scored `41/100 (medium)`, whereas **Photo B** (`8` tiny distant potholes `0.08%–0.95%` each, ~`3.1%–3.9%` total area) scored `56/100 (high)`.
+- **Unreliable Sub-Pixel Specks**: SAM 3.1 returned tiny distant specks (`0.08%` and `0.13%` of image area) on Photo B that inflated the defect count.
+- **UI Label Clutter**: Rendering full text badges (`pothole (0.78%)`) and dashed bounding boxes simultaneously on all detections caused overlapping, unreadable labels on multi-defect scenes (`399×501` Photo B).
+
+### 2. Simple, Justified Rules Implemented (Documented in `README.md`)
+1. **Area & Largest-Instance Dominant Severity (`packages/core/src/scoring.ts`)**:
+   - Each damage instance $i$ contributes confidence- and type-weighted effective area $e_i = \text{area}_i \times \text{confidence}_i \times w_i$.
+   - **Total Damaged Area ($S_{\text{total}}$)**: $\min(50,\; 4.5 \times \sum_i e_i)$ (`TOTAL_AREA_SCORE_FACTOR = 4.5`, `MAX_TOTAL_AREA_SCORE = 50`).
+   - **Largest Single Defect ($S_{\text{largest}}$)**: $\min(40,\; 5.0 \times \max_i e_i)$ (`LARGEST_INSTANCE_SCORE_FACTOR = 5.0`, `MAX_LARGEST_INSTANCE_SCORE = 40`).
+   - **Instance Count Bonus ($S_{\text{count}}$)**: $\min(10,\; 1.25 \times \sum_i \text{confidence}_i)$ (`COUNT_BONUS_PER_INSTANCE = 1.25`, `MAX_COUNT_BONUS = 10`).
+   - **Type Weights (`CONCEPT_WEIGHTS`)**: `sinkhole: 1.5`, `pothole: 1.3`, `steel rebar / rebar: 1.2`, `debris / rut / spall: 1.1`, `crack: 1.0`, `patch: 0.7`, `puddle: 0.6`, `manhole cover: 0`.
+   - Full `SeverityBreakdown` (`area`, `largest`, `count`, `confidence`, `type weights`, `rawScore`, `finalScore`) attached to `InspectionReport` and rendered in `SeverityBreakdownCard` (`RoadPage`, `ReportDetailPage`, `ConstructionPage`), printable HTML/PDF export, and CLI output.
+   - Added unit tests in `packages/core/test/scoring.test.ts` verifying Photo A (`58/100 high`) > Photo B (`24–31/100`), `1 huge pothole (91) >= 3 medium potholes (52) > 10 tiny dots (19) > no damage (0)`.
+2. **Minimum Mask Area Filter (`packages/core/src/filtering.ts`)**:
+   - Added `MIN_AREA_RATIO = 0.0015` (`0.15%` of total image area) and `filterFindingsByMinArea` inside `postProcessFindings` (unit-tested in `packages/core/test/filtering.test.ts`).
+3. **UI Label Decluttering (`apps/web/src/components/MaskOverlayViewer.tsx`)**:
+   - Shows small resolution-scaled numbered badges (`1, 2, 3...`) matching the numbered `Detected Findings` list on the right (`RoadPage.tsx`, `ReportDetailPage.tsx`).
+   - Bounding boxes are optional (`Boxes` toggle, off by default).
+   - Visible default badges use 7-offset AABB collision-avoidance prioritized by confidence and are capped at `MAX_VISIBLE_BADGES = 8` so labels never overlap; full callout (`#N concept · area% · conf%`) is shown only on hover or selection.
+
+### 3. Verification Suite (`pnpm typecheck`, `pnpm test`, `pnpm build`)
+- `pnpm typecheck`: Passed (`0` errors across `@viaguard/core`, `@viaguard/api`, `@viaguard/web`).
+- `pnpm test`: Passed (`36/36` tests: `23` in `@viaguard/core` + `13` in `@viaguard/api`).
+- `pnpm build`: Passed cleanly across all workspace packages.
+
+### 4. Live Pipeline Re-Run Results: Photo A vs. Photo B
+
+#### Photo A (`real-street-photo.jpg`, `1195×1600`, Report `rep-road-1793343122568-77ab2a87`)
+- **Severity**: **`58/100 [HIGH]`** *(previously `41/100 [MEDIUM]`)*
+- **Privacy Blur**: `on` (`5` regions blurred)
+- **Retained Findings (`1`)**:
+  - `#1 pothole`: `relativeArea = 6.71%` | `confidence = 0.69` (`69%`) | `bbox = [419, 627, 1069, 1023]`
+- **Full Score Breakdown**:
+  - Total Damaged Area Score: `27.08 / 50 pts` (`raw = 6.71%`, `weighted = 6.02%`)
+  - Largest Single Defect Score: `30.09 / 40 pts` (`raw = 6.71%`, `weighted = 6.02%`)
+  - Instance Count Bonus: `+0.86 / 10 pts` (`1` instance)
+  - Mean Confidence: `69%` (`0.69`)
+  - Applied Type Weights: `pothole = 1.3×`
+  - Raw &rarr; Final Score: `58.04` &rarr; **`58/100`**
+
+#### Photo B (`real-street-photo-b.jpg`, `399×501`, Report `rep-road-1793343143714-7e754670`)
+- **Severity**: **`24/100 [LOW]`** *(previously `56/100 [HIGH]`)*
+- **Privacy Blur**: `on` (`0` regions blurred)
+- **Minimum Area Filtering (`MIN_AREA_RATIO = 0.15%`)**: Discarded `2` sub-`0.15%` distant specks (`0.08%` and `0.13%` from the prior 8-instance run), keeping `6` valid potholes:
+  - `#1 pothole`: `relativeArea = 0.78%` | `confidence = 0.84` (`84%`) | `bbox = [0, 243, 88, 269]`
+  - `#2 pothole`: `relativeArea = 0.62%` | `confidence = 0.84` (`84%`) | `bbox = [159, 236, 238, 257]`
+  - `#3 pothole`: `relativeArea = 0.95%` | `confidence = 0.80` (`80%`) | `bbox = [305, 247, 394, 273]`
+  - `#4 pothole`: `relativeArea = 0.16%` | `confidence = 0.72` (`72%`) | `bbox = [192, 187, 258, 195]`
+  - `#5 pothole`: `relativeArea = 0.21%` | `confidence = 0.70` (`70%`) | `bbox = [259, 198, 320, 207]`
+  - `#6 pothole`: `relativeArea = 0.19%` | `confidence = 0.62` (`62%`) | `bbox = [79, 181, 112, 196]`
+- **Full Score Breakdown**:
+  - Total Damaged Area Score: `13.55 / 50 pts` (`raw = 2.91%`, `weighted = 3.01%`)
+  - Largest Single Defect Score: `4.94 / 40 pts` (`raw = 0.95%`, `weighted = 0.99%`)
+  - Instance Count Bonus: `+5.65 / 10 pts` (`6` instances)
+  - Mean Confidence: `75%` (`0.75`)
+  - Applied Type Weights: `pothole = 1.3×`
+  - Raw &rarr; Final Score: `24.14` &rarr; **`24/100`**

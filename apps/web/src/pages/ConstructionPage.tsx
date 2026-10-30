@@ -8,6 +8,7 @@ import { useMotionPreferences } from "@/hooks/useMotionPreferences";
 import { api, DemoSample, ProgressState } from "../api/client.ts";
 import { InspectionReport } from "@viaguard/core";
 import { BeforeAfterSlider } from "../components/BeforeAfterSlider.tsx";
+import { SeverityBreakdownCard } from "../components/SeverityBreakdownCard.tsx";
 import { useDemoMode, CachedReplayBanner } from "../context/DemoModeContext.tsx";
 import {
   HardHat,
@@ -540,6 +541,9 @@ export const ConstructionPage: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* Deterministic Severity Score Breakdown (Post-Epoch Site Hazard) */}
+          <SeverityBreakdownCard report={report} />
 
           {/* Muse Spark Reasoning Summary */}
           <div className="grid md:grid-cols-2 gap-6 text-xs">

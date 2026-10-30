@@ -9,6 +9,12 @@ export const DEFAULT_MIN_CONFIDENCE = 0.6;
 /** Cross-instance Non-Maximum Suppression IoU threshold (mask or box IoU > 0.5). */
 export const NMS_IOU_THRESHOLD = 0.5;
 
+/**
+ * Minimum mask area ratio relative to total image area (`0.0015` = `0.15%` of frame).
+ * SAM 3.1 masks smaller than 0.15% of the image area are discarded as unreliable speckle/distant noise.
+ */
+export const MIN_AREA_RATIO = 0.0015;
+
 /** Confidence threshold used when segmenting privacy-sensitive regions ("person", "license plate"). */
 export const PRIVACY_MIN_CONFIDENCE = 0.25;
 
@@ -217,6 +223,18 @@ export function filterFindingsByConfidence<T extends DamageFinding>(findings: re
 }
 
 /**
+ * Discards SAM detections whose mask area is below `minAreaRatio` of total image area
+ * (`MIN_AREA_RATIO = 0.0015`, i.e., `0.15%` of the frame).
+ */
+export function filterFindingsByMinArea<T extends DamageFinding>(
+  findings: readonly T[],
+  minAreaRatio = MIN_AREA_RATIO
+): T[] {
+  const minAreaPercent = minAreaRatio * 100;
+  return findings.filter((f) => f.relativeAreaPercent >= minAreaPercent - 1e-9);
+}
+
+/**
  * Computes exact Intersection-over-Union (IoU) between two bounding boxes.
  */
 export function computeBoxIoU(a: BoundingBox, b: BoundingBox): number {
@@ -338,12 +356,14 @@ export function deduplicateFindingsNMS(
  * Full post-segmentation filter pipeline:
  * 1. Rejects findings whose concept is not a valid 1-2 word plain noun (unless disabled).
  * 2. Discards instances below confidence threshold (0.5 for pothole, 0.6 for all others).
- * 3. Runs cross-concept NMS (mask or box IoU > 0.5 keeps highest confidence).
+ * 3. Discards instances whose mask area ratio is below MIN_AREA_RATIO (0.15% of frame).
+ * 4. Runs cross-concept NMS (mask or box IoU > 0.5 keeps highest confidence).
  */
 export function postProcessFindings(
   findings: readonly CandidateFinding[],
   options?: {
     enforcePlainNounConcepts?: boolean;
+    minAreaRatio?: number;
     iouThreshold?: number;
   }
 ): DamageFinding[] {
@@ -358,5 +378,6 @@ export function postProcessFindings(
     : [...findings];
 
   const confident = filterFindingsByConfidence(sanitized);
-  return deduplicateFindingsNMS(confident, options?.iouThreshold ?? NMS_IOU_THRESHOLD);
+  const sizable = filterFindingsByMinArea(confident, options?.minAreaRatio ?? MIN_AREA_RATIO);
+  return deduplicateFindingsNMS(sizable, options?.iouThreshold ?? NMS_IOU_THRESHOLD);
 }

@@ -16,6 +16,22 @@ export type GeoLocation = z.infer<typeof GeoLocationSchema>;
 export const SeverityLevelSchema = z.enum(["low", "medium", "high", "critical"]);
 export type SeverityLevel = z.infer<typeof SeverityLevelSchema>;
 
+export const SeverityBreakdownSchema = z.object({
+  rawTotalAreaPercent: z.number(),
+  largestInstanceRawAreaPercent: z.number(),
+  weightedTotalArea: z.number(),
+  largestInstanceWeightedArea: z.number(),
+  totalAreaScore: z.number(),
+  largestInstanceScore: z.number(),
+  countBonus: z.number(),
+  damageInstanceCount: z.number(),
+  averageConfidence: z.number(),
+  appliedTypeWeights: z.record(z.string(), z.number()),
+  rawScore: z.number(),
+  finalScore: z.number(),
+});
+export type SeverityBreakdown = z.infer<typeof SeverityBreakdownSchema>;
+
 // --- Bounding Box & Finding ---
 export const BoundingBoxSchema = z.object({
   x1: z.number(),
@@ -114,6 +130,7 @@ export const InspectionReportSchema = z.object({
   overallCondition: z.string(),
   severityScore: z.number().min(0).max(100),
   severityLevel: SeverityLevelSchema,
+  severityBreakdown: SeverityBreakdownSchema.optional(),
   findings: z.array(DamageFindingSchema),
   afterFindings: z.array(DamageFindingSchema).optional(),
   constructionDiff: ConstructionDiffSchema.optional(),

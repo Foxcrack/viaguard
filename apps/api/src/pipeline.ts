@@ -403,6 +403,7 @@ export async function runRoadPipeline(options: {
         findings: filteredBundleFindings,
         severityScore: recomputedSeverity.score,
         severityLevel: recomputedSeverity.level,
+        severityBreakdown: recomputedSeverity.breakdown,
         privacyBlurApplied: privacyBlur,
         privacyRegionsBlurred: privacyBlur ? regionsBlurred : 0,
         isCached: true,
@@ -469,6 +470,7 @@ export async function runRoadPipeline(options: {
       overallCondition: scene.overall_condition,
       severityScore: severity.score,
       severityLevel: severity.level,
+      severityBreakdown: severity.breakdown,
       findings: filteredFindings,
       title: structuredReport.title,
       summary: structuredReport.summary,
@@ -531,7 +533,7 @@ export async function runRoadPipeline(options: {
   );
   const rawFindings: CandidateFinding[] = findingsNested.flat();
 
-  // Filter by per-concept confidence (0.5 pothole, 0.6 others) and apply cross-concept NMS (IoU > 0.5)
+  // Filter by per-concept confidence, minimum mask area (MIN_AREA_RATIO = 0.15%), and cross-concept NMS (IoU > 0.5)
   const filteredFindings: DamageFinding[] = postProcessFindings(rawFindings);
 
   // Privacy Protection (ON by default): segment "person" and "license plate" and blur stored image
@@ -578,6 +580,7 @@ export async function runRoadPipeline(options: {
     overallCondition: scene.overall_condition,
     severityScore: severity.score,
     severityLevel: severity.level,
+    severityBreakdown: severity.breakdown,
     findings: filteredFindings,
     title: structuredReport.title,
     summary: structuredReport.summary,
@@ -663,12 +666,22 @@ export async function runConstructionPipeline(options: {
       ]);
       regionsBlurred = bBlur.regionsBlurred + aBlur.regionsBlurred;
     }
+    const filteredBefore = postProcessFindings(bundle.report.findings);
+    const filteredAfter = bundle.report.afterFindings
+      ? postProcessFindings(bundle.report.afterFindings)
+      : undefined;
+    const recomputedSeverity = calculateSeverity(filteredAfter ?? filteredBefore);
     const replayedReport: InspectionReport = {
       ...bundle.report,
       id: `rep-const-replay-${Date.now()}-${afterPrep.hash.slice(0, 6)}`,
       createdAt: new Date().toISOString(),
       imageUrl: beforePrep.relativeUrl,
       afterImageUrl: afterPrep.relativeUrl,
+      findings: filteredBefore,
+      afterFindings: filteredAfter,
+      severityScore: recomputedSeverity.score,
+      severityLevel: recomputedSeverity.level,
+      severityBreakdown: recomputedSeverity.breakdown,
       privacyBlurApplied: privacyBlur,
       privacyRegionsBlurred: privacyBlur ? regionsBlurred : 0,
       isCached: true,
@@ -815,6 +828,7 @@ export async function runConstructionPipeline(options: {
     overallCondition: afterScene.overall_condition,
     severityScore: severity.score,
     severityLevel: severity.level,
+    severityBreakdown: severity.breakdown,
     findings: beforeFindings,
     afterFindings: afterFindings,
     constructionDiff: diffResult,
