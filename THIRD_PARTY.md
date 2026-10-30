@@ -30,3 +30,7 @@ This file documents all third-party software libraries, tools, and assets utiliz
 
 ## Design & UI Components
 - **React Bits** (https://reactbits.dev): Curated modern UI components (SpotlightCard, AnimatedList, BlurText, ShinyText, CountUp) adapted for clean civic-tech design.
+
+
+## Sample Assets & Conformance Data
+- **Synthetic Demo Images** (`apps/web/public/samples/`): Programmatically rendered high-contrast test fixtures (asphalt potholes, cracking networks, excavation pits, foundation walls, and scaffolding) generated via Sharp vector compositing. Released into the public domain (CC0) / MIT for hackathon testing and reproducible offline evaluation.
