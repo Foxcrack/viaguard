@@ -1,0 +1,20 @@
+{
+  "name": "viaguard-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.3.4",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @viaguard/api --filter @viaguard/web dev",
+    "build": "pnpm --filter @viaguard/core build && pnpm --filter @viaguard/api build && pnpm --filter @viaguard/web build",
+    "test": "pnpm --filter @viaguard/core test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "check:meta": "pnpm --filter @viaguard/api check:meta",
+    "analyze:sample": "pnpm --filter @viaguard/api analyze:sample"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

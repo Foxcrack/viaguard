@@ -1,0 +1,28 @@
+# Viaguard Build Log
+
+All development decisions, milestones, testing notes, and command outputs during the Meta Global AI Developer Hackathon (Oct 27 – Nov 4, 2026).
+
+---
+
+## 2026-10-29 – Phase 0: Foundation Setup
+
+### What was built
+- Initialized pnpm workspace monorepo layout:
+  - `apps/web`: Vite + React 18 + TypeScript + Tailwind CSS
+  - `apps/api`: Node 20+ with Hono + TypeScript
+  - `packages/core`: shared inspection pipeline, scoring, area math, and types
+- Created `.gitignore`, `.env.example`, `LICENSE` (MIT), `THIRD_PARTY.md`, and skeleton `README.md`.
+- Configured TypeScript in strict mode across root and all workspace packages.
+- Configured Vitest test runner for core unit tests.
+
+### Decisions
+- Package Manager: `pnpm@12.3.4` workspace configured via `pnpm-workspace.yaml`.
+- Monorepo package naming convention: `@viaguard/core`, `@viaguard/api`, and `@viaguard/web`.
+- Database storage: SQLite via `better-sqlite3` with an automatic in-memory/JSON fallback if native compilation encounters platform restrictions on Windows Node 24.
+- API framework: Hono with `@hono/node-server` for light, high-speed, standard Web API compatibility on Node 20+.
+
+### Problems & Resolutions
+- None in Phase 0. Workspace structure initialized cleanly.
+
+### Next Steps
+- Implement Phase 1: Meta Model API client in `@viaguard/api` / `@viaguard/core` with OpenAI SDK Responses API, `@meta-sam/parser` mask decoding, backoff/retry, disk caching, token tracking, and `pnpm check:meta`.
