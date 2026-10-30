@@ -61,13 +61,13 @@ export function calculateSeverity(findings: DamageFinding[]): SeverityEvaluation
     }
   }
 
-  // Component 1: Area score (up to 50 points)
-  // 15% frame coverage of potholes/damage is already very severe in municipal inspection
-  const areaScore = Math.min(totalDamageAreaPercent * 3.33, 50);
+  // Component 1: Area score (up to 60 points)
+  // 15%+ frame coverage of potholes/damage is already very severe in municipal inspection
+  const areaScore = Math.min(totalDamageAreaPercent * 4.0, 60);
 
-  // Component 2: Instance count score (up to 30 points)
-  // 4 or more distinct damage patches = 30 points
-  const countScore = Math.min(damageInstanceCount * 7.5, 30);
+  // Component 2: Instance count score (up to 35 points)
+  // 5 or more distinct damage patches = 35 points
+  const countScore = Math.min(damageInstanceCount * 7.0, 35);
 
   // Component 3: Baseline hazard multiplier
   const confidenceMultiplier = 0.7 + 0.3 * Math.min(Math.max(avgConfidence, 0), 1);

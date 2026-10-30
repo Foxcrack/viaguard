@@ -55,3 +55,30 @@ All development decisions, milestones, testing notes, and command outputs during
 
 ### Next Steps
 - Phase 2: Core Inspection Pipeline in `packages/core` (preprocessing, area calculation, scoring, diffing, report generation) with Vitest unit tests and CLI sample runner.
+
+---
+
+## 2026-10-29 – Phase 2: Core Inspection Pipeline
+
+### What was built
+- Implemented full 6-step core inspection pipeline in `apps/api/src/pipeline.ts`:
+  1. `preprocessImage`: Validates <10MB size, verifies JPEG/PNG/WebP format, extracts EXIF GPS tags using `exifr.gps()` before modification, resizes max dimension to 1600px with `sharp`, computes SHA256, and stores files in `uploads/`.
+  2. `Scene Understanding`: Structured inference with `muse-spark-1.3` to extract scene classification and dynamic concept suggestions.
+  3. `Segmentation`: Streaming segmentation with `sam-3.1`, `@meta-sam/parser` mask decoding, vector SVG path conversion, and relative area percentages.
+  4. `Deterministic Severity Scoring`: `calculateSeverity()` computing mathematical hazard scores (0-100) and severity bands (`low`, `medium`, `high`, `critical`) based on relative areas, instance counts, confidence, and concept hazard weights.
+  5. `Report Authoring`: Structured reporting with `muse-spark-1.3` producing actionable municipal recommendations and urgency tiers.
+  6. `Persistence`: Storage abstraction in `apps/api/src/storage.ts` writing atomic JSON records to `data/reports.json`.
+- Implemented comparative construction site analysis (`compareConstructionSites` in `packages/core/src/diff.ts`) comparing instance counts and relative area percentages across time.
+- Implemented CLI runner `pnpm analyze:sample` in `apps/api/src/cli-sample.ts` for end-to-end headless verification.
+- Implemented comprehensive Vitest test suites in `packages/core/test/` for scoring, diffing, and schema validation.
+
+### Verification Output
+- `pnpm test`: 13 unit tests passed across 4 test suites.
+- Type checking passes across all workspace packages.
+
+### Decisions
+- Neutral elements (such as manhole covers) are isolated from road hazard calculations to prevent false escalation of street severity scores while preserving spatial context.
+- SAM concept execution utilizes a concurrency worker pool capped at 2 to balance throughput while respecting API rate limits.
+
+### Next Steps
+- Phase 3: Backend API HTTP endpoints with Hono, multipart image upload handling, progress polling/events, and sample image provisioning.
