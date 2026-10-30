@@ -345,3 +345,87 @@ Set MODEL_API_KEY in .env at the project root and re-run to record real API resp
 - `pnpm lint`: Passed (`@viaguard/core`, `@viaguard/api`, `@viaguard/web`).
 - `pnpm test`: Passed (`23/23` tests: 13 in `@viaguard/core` + 10 in `@viaguard/api`).
 - `pnpm build`: Passed cleanly across all workspace packages with separate lazy chunks for `Topography`, `Noise`, `Scanner`, `InspectionMap`, and route views.
+
+
+---
+
+## 2026-10-30 – Responses API Structured Output Fix (`text.format`) & Live Meta API Verification
+
+### 1. Root Cause & Fix
+- Verified against official Meta Model API documentation (`https://dev.meta.ai/docs/structured-output`, `https://dev.meta.ai/docs/protocols/responses`, and `https://dev.meta.ai/docs/api-reference/responses/schemas`):
+  - `response_format` belongs to Chat Completions (`/v1/chat/completions`), whereas `/v1/responses` (`client.responses.create`) uses `text: { format: { type: "json_schema", name, schema, strict: true } }`.
+- Centralized all Muse Spark structured-output calls into a single `createStructuredResponse` helper in `apps/api/src/meta-client.ts` used by both `understandSceneWithMuseSpark` and `writeReportWithMuseSpark`:
+  - Removed all `response_format` usage across the codebase.
+  - Defined strict-subset JSON Schemas (`additionalProperties: false` and explicit `required` arrays on every object) for `scene_understanding` and `structured_inspection_report`.
+  - Audited all other `/v1/responses` request fields (`model: "muse-spark-1.3"`, `model: "sam-3.1"`, `input: [{ type: "message", role: "user", content: [...] }]`, `reasoning: { effort: "low" }`, SAM `metadata: { mask_encoding: "one_bit", include_confidence: "true" }`, `stream: true`) and updated `tokenTracker` to read Responses API `input_tokens` / `output_tokens` / `total_tokens`.
+  - Retained Zod schema validation (`SceneUnderstandingSchema`, `StructuredReportSchema`) with 1 retry on malformed JSON and fallback to `DEFAULT_ROAD_CONCEPTS` / `DEFAULT_CONSTRUCTION_CONCEPTS` if scene JSON remains invalid after retry.
+  - Added unit tests in `apps/api/test/api.test.ts` covering `text.format` payload structure, retry-once behavior, and default-concept fallback.
+
+### 2. Real Verification Outputs (2026-10-30)
+
+#### `pnpm typecheck`
+```text
+$ pnpm -r typecheck
+packages/core typecheck$ tsc --noEmit
+packages/core typecheck: Done
+apps/web typecheck$ tsc --noEmit
+apps/api typecheck$ tsc --noEmit
+apps/api typecheck: Done
+apps/web typecheck: Done
+```
+
+#### `pnpm test`
+```text
+$ pnpm -r test
+Scope: 3 of 4 workspace projects
+$ vitest run
+
+ RUN  v2.1.9 C:/Users/felip/OneDrive/Documentos/GitHub/viaguard/packages/core
+
+ ✓ test/diff.test.ts (3 tests) 2ms
+ ✓ test/scoring.test.ts (5 tests) 3ms
+ ✓ test/basic.test.ts (1 test) 1ms
+ ✓ test/schema.test.ts (4 tests) 4ms
+
+ Test Files  4 passed (4)
+      Tests  13 passed (13)
+
+$ vitest run
+
+ RUN  v2.1.9 C:/Users/felip/OneDrive/Documentos/GitHub/viaguard/apps/api
+
+ ✓ test/api.test.ts (12 tests) 48ms
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+```
+
+#### `pnpm check:meta`
+```text
+$ pnpm --filter @viaguard/api check:meta
+$ tsx src/check-meta.ts
+==================================================
+       Viaguard Meta Model API Health Check       
+==================================================
+✔ MODEL_API_KEY detected in environment (credentials secured).
+✔ Connecting to Meta Model API gateway: https://api.meta.ai/v1
+✔ Generated synthetic road verification image (256x256px)
+
+[1/2] Calling Muse Spark (muse-spark-1.3) for scene understanding...
+[Token Tracker] Request #1 consumed: 758 tokens (in=234, out=524) | Lifetime Total: 758 tokens
+✔ Muse Spark call successful (3247ms)!
+   - Scene Type: "unidentifiable dark surface"
+   - Condition: "unknown"
+   - Suggested Concepts: []
+   - Cache status: LIVE
+
+[2/2] Calling SAM 3.1 (sam-3.1) for concept segmentation...
+✔ SAM 3.1 streaming segmentation successful (322ms)!
+   - Detections count: 0
+   - Cache status: LIVE
+
+==================================================
+       RESULT: ALL META API CHECKS PASSED         
+  Lifetime Tokens Tracked: 758
+==================================================
+```

@@ -2,8 +2,14 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { app } from "../src/index.js";
 import { storage } from "../src/storage.js";
 import { applyPrivacyBlur } from "../src/pipeline.js";
+import { createStructuredResponse, understandSceneWithMuseSpark } from "../src/meta-client.js";
 import sharp from "sharp";
-import { InspectionReport, DamageFinding } from "@viaguard/core";
+import {
+  InspectionReport,
+  DamageFinding,
+  SceneUnderstandingSchema,
+  DEFAULT_ROAD_CONCEPTS,
+} from "@viaguard/core";
 
 describe("Viaguard Backend API Endpoints", () => {
   beforeAll(async () => {
@@ -187,5 +193,74 @@ describe("Viaguard Backend API Endpoints", () => {
     const meta = await sharp(blurredBuffer).metadata();
     expect(meta.width).toBe(400);
     expect(meta.height).toBe(300);
+  });
+
+  it("createStructuredResponse sends Responses API text.format json_schema (never response_format) and retries once on invalid JSON", async () => {
+    const capturedPayloads: any[] = [];
+    let callCount = 0;
+
+    const fakeClient: any = {
+      responses: {
+        create: async (payload: any) => {
+          capturedPayloads.push(payload);
+          callCount++;
+          if (callCount === 1) {
+            return { output_text: "{not-valid-json", usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } };
+          }
+          return {
+            output_text: JSON.stringify({
+              scene_type: "asphalt street",
+              visible_damage_types: ["pothole", "crack"],
+              overall_condition: "poor",
+              notes: "Cracked asphalt",
+            }),
+            usage: { input_tokens: 12, output_tokens: 18, total_tokens: 30 },
+          };
+        },
+      },
+    };
+
+    const result = await createStructuredResponse({
+      model: "muse-spark-1.3",
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "test" }] }],
+      schemaName: "scene_understanding",
+      jsonSchema: { type: "object", properties: {}, required: [], additionalProperties: false },
+      zodSchema: SceneUnderstandingSchema,
+      reasoningEffort: "low",
+      clientOverride: fakeClient,
+    });
+
+    expect(callCount).toBe(2);
+    expect(capturedPayloads[0]).not.toHaveProperty("response_format");
+    expect(capturedPayloads[0].text.format).toMatchObject({
+      type: "json_schema",
+      name: "scene_understanding",
+      strict: true,
+    });
+    expect(capturedPayloads[0].reasoning).toEqual({ effort: "low" });
+    expect(result.scene_type).toBe("asphalt street");
+  });
+
+  it("understandSceneWithMuseSpark falls back to DEFAULT_ROAD_CONCEPTS if model returns invalid JSON twice", async () => {
+    let calls = 0;
+    const fakeClient: any = {
+      responses: {
+        create: async () => {
+          calls++;
+          return { output_text: "invalid json output" };
+        },
+      },
+    };
+
+    const { scene, isCached } = await understandSceneWithMuseSpark({
+      imageBase64: "dGVzdA==",
+      imageHash: "test-invalid-json-fallback",
+      moduleType: "road",
+      clientOverride: fakeClient,
+    });
+
+    expect(calls).toBe(2);
+    expect(isCached).toBe(false);
+    expect(scene.visible_damage_types).toEqual([...DEFAULT_ROAD_CONCEPTS]);
   });
 });

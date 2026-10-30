@@ -34,7 +34,7 @@ Viaguard depends strictly on Meta's models through the **Meta Model API** (`http
 | Model ID | Role in Viaguard | Technical Implementation Details |
 |---|---|---|
 | **`sam-3.1`** | **Sub-Pixel Object Segmentation** | Called through the Responses API with `stream: true`. Receives one short noun phrase concept (e.g. `"pothole"`, `"crack"`, `"scaffolding"`). Requests 1-bit mask encoding (`metadata: { mask_encoding: "one_bit", include_confidence: "true" }`). Decoded with official `@meta-sam/parser` (`parseImageStream`, `recordsOfKind`, `decodeMaskToRaster`, and `decodeMaskToSVGPath`) to calculate exact active raster pixel area percentages and crisp vector SVG overlay paths. |
-| **`muse-spark-1.3`** | **Scene Understanding & Reasoning** | Receives the street image with strict structured JSON schema (`response_format: { type: "json_object" }`) to identify road surface type, structural condition, and suggest target SAM concept prompts. |
+| **`muse-spark-1.3`** | **Scene Understanding & Reasoning** | Receives the street image with strict Responses API structured JSON schema (`text: { format: { type: "json_schema", strict: true } }`) to identify road surface type, structural condition, and suggest target SAM concept prompts. |
 | **`muse-spark-1.3`** | **Comparative Construction Diffing** | Compares BEFORE and AFTER site measurements, distinguishing physical structural progression from deterioration and safety risks. |
 | **`muse-spark-1.3`** | **Municipal Report Authoring** | Synthesizes measured relative surface areas, confidence scores, and damage counts into actionable civic repair recommendations (cold patching, milling, crack sealing) and urgency tiers. |
 

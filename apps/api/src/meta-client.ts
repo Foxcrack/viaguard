@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
+import { z } from "zod";
 import {
   parseImageStream,
   recordsOfKind,
@@ -14,23 +15,34 @@ import {
   StructuredReport,
   StructuredReportSchema,
   DamageFinding,
+  DEFAULT_ROAD_CONCEPTS,
+  DEFAULT_CONSTRUCTION_CONCEPTS,
 } from "@viaguard/core";
 import { CACHE_DIR } from "./paths.js";
 
-// Token Usage Tracker
+// Token Usage Tracker (supports both Responses API input_tokens/output_tokens and Chat Completions fields)
 export const tokenTracker = {
   totalPromptTokens: 0,
   totalCompletionTokens: 0,
   totalTokens: 0,
   requestCount: 0,
-  addUsage(usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }) {
+  addUsage(usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  }) {
     if (!usage) return;
-    this.totalPromptTokens += usage.prompt_tokens || 0;
-    this.totalCompletionTokens += usage.completion_tokens || 0;
-    this.totalTokens += usage.total_tokens || 0;
+    const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? 0;
+    const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? 0;
+    const totalTokens = usage.total_tokens ?? inputTokens + outputTokens;
+    this.totalPromptTokens += inputTokens;
+    this.totalCompletionTokens += outputTokens;
+    this.totalTokens += totalTokens;
     this.requestCount++;
     console.log(
-      `[Token Tracker] Request #${this.requestCount} consumed: ${usage.total_tokens || 0} tokens | Lifetime Total: ${this.totalTokens} tokens`
+      `[Token Tracker] Request #${this.requestCount} consumed: ${totalTokens} tokens (in=${inputTokens}, out=${outputTokens}) | Lifetime Total: ${this.totalTokens} tokens`
     );
   },
 };
@@ -42,6 +54,77 @@ interface VerifiedCacheEnvelope<T> {
   imageHash: string;
   payload: T;
 }
+
+class StructuredOutputValidationError extends Error {
+  constructor(message: string, public readonly rawOutput: string) {
+    super(message);
+    this.name = "StructuredOutputValidationError";
+  }
+}
+
+const SCENE_UNDERSTANDING_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    scene_type: {
+      type: "string",
+      description: "Classification of the street or construction scene",
+    },
+    visible_damage_types: {
+      type: "array",
+      items: { type: "string" },
+      description: "Short noun phrases suitable as single-concept SAM 3.1 prompts",
+    },
+    overall_condition: {
+      type: "string",
+      description: "Overall physical condition rating",
+    },
+    notes: {
+      type: "string",
+      description: "Concise visual engineering observations",
+    },
+  },
+  required: ["scene_type", "visible_damage_types", "overall_condition", "notes"],
+  additionalProperties: false,
+} as const;
+
+const STRUCTURED_REPORT_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    summary: { type: "string" },
+    recommendedAction: { type: "string" },
+    priority: {
+      type: "string",
+      enum: ["low", "medium", "high", "critical"],
+    },
+    estimatedUrgency: { type: "string" },
+    keyFindings: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          concept: { type: "string" },
+          description: { type: "string" },
+          severity: {
+            type: "string",
+            enum: ["low", "medium", "high", "critical"],
+          },
+        },
+        required: ["concept", "description", "severity"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: [
+    "title",
+    "summary",
+    "recommendedAction",
+    "priority",
+    "estimatedUrgency",
+    "keyFindings",
+  ],
+  additionalProperties: false,
+} as const;
 
 function ensureCacheDir(): void {
   if (!fs.existsSync(CACHE_DIR)) {
@@ -104,6 +187,28 @@ function stripMarkdownJsonFences(raw: string): string {
   return trimmed;
 }
 
+function extractResponsesOutputText(res: any): string {
+  if (typeof res?.output_text === "string" && res.output_text.trim().length > 0) {
+    return res.output_text;
+  }
+  if (Array.isArray(res?.output)) {
+    const chunks: string[] = [];
+    for (const item of res.output) {
+      if (item?.type === "message" && Array.isArray(item.content)) {
+        for (const part of item.content) {
+          if (part?.type === "output_text" && typeof part.text === "string") {
+            chunks.push(part.text);
+          }
+        }
+      }
+    }
+    if (chunks.length > 0) {
+      return chunks.join("");
+    }
+  }
+  return "";
+}
+
 export function getMetaClient(): OpenAI {
   const apiKey = process.env.MODEL_API_KEY;
   if (!apiKey || apiKey.trim() === "") {
@@ -161,6 +266,70 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
 }
 
 /**
+ * Single centralized helper for Responses API JSON-Schema structured outputs (`text.format`).
+ * Validates the response with Zod and retries once if the model emits invalid JSON.
+ */
+export async function createStructuredResponse<T>(options: {
+  model: string;
+  input: Array<{
+    type: "message";
+    role: "user" | "system" | "developer";
+    content: Array<
+      | { type: "input_text"; text: string }
+      | { type: "input_image"; image_url: string }
+    >;
+  }>;
+  schemaName: string;
+  jsonSchema: Record<string, unknown>;
+  zodSchema: z.ZodType<T, z.ZodTypeDef, unknown>;
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  clientOverride?: OpenAI;
+}): Promise<T> {
+  const client = options.clientOverride ?? getMetaClient();
+  const maxValidationAttempts = 2; // Initial attempt + 1 retry if JSON/Zod validation fails
+  let lastValidationErr: StructuredOutputValidationError | null = null;
+
+  for (let attempt = 1; attempt <= maxValidationAttempts; attempt++) {
+    const rawText = await withRetry(async () => {
+      const res: any = await client.responses.create({
+        model: options.model,
+        input: options.input,
+        ...(options.reasoningEffort
+          ? { reasoning: { effort: options.reasoningEffort } }
+          : {}),
+        text: {
+          format: {
+            type: "json_schema",
+            name: options.schemaName,
+            schema: options.jsonSchema,
+            strict: true,
+          },
+        },
+      } as any);
+
+      tokenTracker.addUsage(res?.usage);
+      return extractResponsesOutputText(res);
+    });
+
+    try {
+      const cleaned = stripMarkdownJsonFences(rawText);
+      const parsed = JSON.parse(cleaned);
+      return options.zodSchema.parse(parsed);
+    } catch (parseErr: any) {
+      lastValidationErr = new StructuredOutputValidationError(
+        `Invalid structured JSON from ${options.model} (${options.schemaName}) on attempt ${attempt}/${maxValidationAttempts}: ${parseErr?.message || parseErr}`,
+        rawText
+      );
+      if (attempt < maxValidationAttempts) {
+        console.warn(`[Structured Output Retry] ${lastValidationErr.message}. Retrying once...`);
+      }
+    }
+  }
+
+  throw lastValidationErr!;
+}
+
+/**
  * Step 2: Scene Understanding with Muse Spark (muse-spark-1.3)
  */
 export async function understandSceneWithMuseSpark(options: {
@@ -170,28 +339,23 @@ export async function understandSceneWithMuseSpark(options: {
   mimeType?: string;
   useCache?: boolean;
   recordToCache?: boolean;
+  clientOverride?: OpenAI;
 }): Promise<{ scene: SceneUnderstanding; isCached: boolean }> {
   const model = "muse-spark-1.3";
   const prompt =
     options.moduleType === "road"
       ? `You are an expert civic infrastructure engineer inspecting road conditions. Analyze this street image.
-Return a strictly valid JSON object matching this schema:
-{
-  "scene_type": string (e.g. "asphalt road", "concrete highway", "residential street", "intersection"),
-  "visible_damage_types": string[] (provide up to 4 SHORT noun phrases suitable as SAM concept prompts, e.g. ["pothole", "crack", "damaged road surface", "manhole cover"]),
-  "overall_condition": string (e.g. "poor", "fair", "good", "critical"),
-  "notes": string (concise visual observations)
-}
-Return only JSON with no markdown wrapping or preamble.`
+Return a JSON object matching the schema with:
+- "scene_type": e.g. "asphalt road", "concrete highway", "residential street", "intersection"
+- "visible_damage_types": up to 4 SHORT noun phrases suitable as SAM 3.1 concept prompts, e.g. ["pothole", "crack", "damaged road surface", "manhole cover"]
+- "overall_condition": e.g. "poor", "fair", "good", "critical"
+- "notes": concise visual observations`
       : `You are an expert construction site inspector. Analyze this construction site image.
-Return a strictly valid JSON object matching this schema:
-{
-  "scene_type": string (e.g. "commercial building foundation", "roadwork zone", "bridge construction"),
-  "visible_damage_types": string[] (provide up to 5 SHORT noun phrases suitable as SAM concept prompts, e.g. ["scaffolding", "concrete wall", "excavator", "steel rebar", "debris", "crack"]),
-  "overall_condition": string (e.g. "active framing", "excavation", "structural installation"),
-  "notes": string (concise visual observations)
-}
-Return only JSON with no markdown wrapping or preamble.`;
+Return a JSON object matching the schema with:
+- "scene_type": e.g. "commercial building foundation", "roadwork zone", "bridge construction"
+- "visible_damage_types": up to 5 SHORT noun phrases suitable as SAM 3.1 concept prompts, e.g. ["scaffolding", "concrete wall", "excavator", "steel rebar", "debris", "crack"]
+- "overall_condition": e.g. "active framing", "excavation", "structural installation"
+- "notes": concise visual observations`;
 
   const cacheKey = getCacheKey(model, prompt, options.imageHash);
 
@@ -205,14 +369,14 @@ Return only JSON with no markdown wrapping or preamble.`;
     return { scene: cached, isCached: true };
   }
 
-  const client = getMetaClient();
   const mime = options.mimeType || "image/jpeg";
 
-  const runCall = async () => {
-    const res: any = await client.responses.create({
+  try {
+    const validated = await createStructuredResponse({
       model,
       input: [
         {
+          type: "message",
           role: "user",
           content: [
             {
@@ -222,28 +386,42 @@ Return only JSON with no markdown wrapping or preamble.`;
             {
               type: "input_image",
               image_url: `data:${mime};base64,${options.imageBase64}`,
-              detail: "auto",
             },
           ],
         },
       ],
-      response_format: { type: "json_object" },
-    } as any);
+      schemaName: "scene_understanding",
+      jsonSchema: SCENE_UNDERSTANDING_JSON_SCHEMA,
+      zodSchema: SceneUnderstandingSchema,
+      reasoningEffort: "low",
+      clientOverride: options.clientOverride,
+    });
 
-    tokenTracker.addUsage(res?.usage);
-    const rawText = res?.output_text || res?.choices?.[0]?.message?.content || "";
-    return rawText;
-  };
+    if (options.recordToCache) {
+      setVerifiedCachedResult(cacheKey, model, options.imageHash, validated);
+    }
 
-  const rawJson = await withRetry(runCall);
-  const parsed = JSON.parse(stripMarkdownJsonFences(rawJson));
-  const validated = SceneUnderstandingSchema.parse(parsed);
-
-  if (options.recordToCache) {
-    setVerifiedCachedResult(cacheKey, model, options.imageHash, validated);
+    return { scene: validated, isCached: false };
+  } catch (err) {
+    // Only fall back to default concepts when the live model returned malformed JSON after 1 retry;
+    // propagate HTTP/auth/network errors directly.
+    if (err instanceof StructuredOutputValidationError) {
+      console.warn(
+        `[Scene Understanding Fallback] Falling back to default ${options.moduleType} concepts after invalid JSON retry: ${err.message}`
+      );
+      const fallbackScene: SceneUnderstanding = {
+        scene_type: options.moduleType === "road" ? "roadway surface" : "construction site",
+        visible_damage_types:
+          options.moduleType === "road"
+            ? [...DEFAULT_ROAD_CONCEPTS]
+            : [...DEFAULT_CONSTRUCTION_CONCEPTS],
+        overall_condition: "inspection pending",
+        notes: "Fallback to default SAM 3.1 concepts after non-conforming scene JSON.",
+      };
+      return { scene: fallbackScene, isCached: false };
+    }
+    throw err;
   }
-
-  return { scene: validated, isCached: false };
 }
 
 /**
@@ -281,6 +459,7 @@ export async function segmentConceptWithSAM(options: {
       model,
       input: [
         {
+          type: "message",
           role: "user",
           content: [
             {
@@ -290,7 +469,6 @@ export async function segmentConceptWithSAM(options: {
             {
               type: "input_image",
               image_url: `data:${mime};base64,${options.imageBase64}`,
-              detail: "auto",
             },
           ],
         },
@@ -418,22 +596,7 @@ ${
     : ""
 }
 
-Generate a concise, professional report formatted as JSON matching this schema:
-{
-  "title": string (e.g. "Municipal Road Damage Assessment: Main St"),
-  "summary": string (clear 2-3 sentence overview citing the measured relative areas and hazard rating),
-  "recommendedAction": string (actionable advice for city public works, e.g. cold patch, milling, repaving, or monitoring),
-  "priority": "low" | "medium" | "high" | "critical",
-  "estimatedUrgency": string (e.g. "Within 48 hours", "Scheduled maintenance within 30 days", "Routine monitoring"),
-  "keyFindings": [
-    {
-      "concept": string,
-      "description": string,
-      "severity": "low" | "medium" | "high" | "critical"
-    }
-  ]
-}
-Return only JSON with no markdown wrapping.`;
+Generate a concise, professional municipal inspection report matching the requested JSON schema.`;
 
   const cacheKey = getCacheKey(model, prompt, options.imageHash);
 
@@ -447,32 +610,25 @@ Return only JSON with no markdown wrapping.`;
     return { report: cached, isCached: true };
   }
 
-  const client = getMetaClient();
-  const runCall = async () => {
-    const res: any = await client.responses.create({
-      model,
-      input: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: prompt,
-            },
-          ],
-        },
-      ],
-      response_format: { type: "json_object" },
-    } as any);
-
-    tokenTracker.addUsage(res?.usage);
-    const rawText = res?.output_text || res?.choices?.[0]?.message?.content || "";
-    return rawText;
-  };
-
-  const rawJson = await withRetry(runCall);
-  const parsed = JSON.parse(stripMarkdownJsonFences(rawJson));
-  const validated = StructuredReportSchema.parse(parsed);
+  const validated = await createStructuredResponse({
+    model,
+    input: [
+      {
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: prompt,
+          },
+        ],
+      },
+    ],
+    schemaName: "structured_inspection_report",
+    jsonSchema: STRUCTURED_REPORT_JSON_SCHEMA,
+    zodSchema: StructuredReportSchema,
+    reasoningEffort: "low",
+  });
 
   if (options.recordToCache) {
     setVerifiedCachedResult(cacheKey, model, options.imageHash, validated);
