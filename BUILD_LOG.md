@@ -138,3 +138,27 @@ All development decisions, milestones, testing notes, and command outputs during
 
 ### Next Steps
 - Phase 5: Construction Progress Module (Before/After side-by-side comparison, draggable comparison slider, comparative diff table, and progression/deterioration reporting).
+
+---
+
+## 2026-10-29 – Phase 5: Construction Progress Module (Before & After)
+
+### What was built
+- Implemented full Construction Progress comparison workflow in `apps/web/src/pages/ConstructionPage.tsx`:
+  - Dual file intake handling BEFORE (baseline) and AFTER (current) inspection photos.
+  - Quick-load handler for bundled synthetic construction pairs (`construction-before-site.jpg` and `construction-after-site.jpg`).
+  - Interactive Before/After slider (`BeforeAfterSlider.tsx`) featuring touch/mouse draggable scrubber and optional SAM segmentation overlay layers for both inspection epochs.
+  - Quantitative element delta measurements table displaying baseline count, current count, delta count, delta relative area %, and qualitative evaluation status (`progress`, `deterioration`, `stable`).
+  - Progress Index metric badge (-100 to +100) and Muse Spark architectural assessment summary.
+- Integrated comparative pipeline in `apps/api/src/pipeline.ts` with comparative concept extraction and SSE job tracking.
+
+### Verification Output
+- Production build `pnpm build` completed in 2.56s.
+- `pnpm test`: 20 unit and API tests passing.
+- Interactive slider tested across desktop mouse scrubbing and touch event handlers.
+
+### Decisions
+- The Before/After slider supports toggling SAM segmentation overlays directly on top of the clipped before/after comparison frames so inspectors can immediately correlate visual progression with model segmentations.
+
+### Next Steps
+- Phase 6: Polish, robustness, zero-damage resilience, error boundaries, demo mode, and accessibility audit.
