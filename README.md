@@ -53,7 +53,7 @@ flowchart TD
         SAMStream["3. Segmentation: sam-3.1 Streaming (1-bit Mask Decoding)"]
         Scoring["4. Deterministic Severity Scoring Formula (0 to 100)"]
         MuseReport["5. Municipal Report Authoring: muse-spark-1.3"]
-        Persist["6. Storage: File-backed SQLite / Atomic JSON Store"]
+        Persist["6. Storage: Atomic File-Backed JSON Store"]
     end
     
     API --> Preprocess
@@ -151,7 +151,7 @@ pnpm dev
 ```bash
 pnpm test
 ```
-Runs 21 Vitest tests validating severity scoring, area calculations, construction diffing, Zod schemas, privacy blur, and REST endpoints.
+Runs 23 Vitest tests validating severity scoring, area calculations, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
 
 ### 6. Run Headless CLI Inspection
 ```bash
@@ -181,7 +181,9 @@ Demo Mode is strictly **opt-in** and never activates silently when `MODEL_API_KE
 
 ---
 
-## 📄 License
+## 📄 License & Credits
 
 Viaguard is open-source software licensed under the [MIT License](LICENSE).
 Third-party licenses and acknowledgments are documented in [THIRD_PARTY.md](THIRD_PARTY.md).
+
+UI visual layer built with [React Bits](https://reactbits.dev) by David Haz.

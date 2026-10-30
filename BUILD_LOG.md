@@ -298,3 +298,50 @@ $ tsx src/record-demo.ts "apps/web/public/samples/road-sample-pothole.jpg"
 BLOCKED: missing MODEL_API_KEY
 Set MODEL_API_KEY in .env at the project root and re-run to record real API responses.
 ```
+
+
+---
+
+## 2026-10-30 – Part B: React Bits Visual Layer
+
+### 1. CLI Registry Setup & Component Installation
+- Initialized shadcn configuration in `apps/web/components.json` for Vite + React + TypeScript + Tailwind with `@/*` path alias (`apps/web/vite.config.ts`, `apps/web/tsconfig.json`, `apps/web/src/lib/utils.ts`) and configured the `@react-bits` registry (`https://reactbits.dev/r/{name}.json`).
+- Installed 18 official TypeScript + Tailwind components via `pnpm dlx shadcn@latest add @react-bits/<ComponentName>-TS-TW` into `apps/web/src/components/reactbits/` without modifying upstream component internals:
+  - `Topography`, `Noise`, `BlurText`, `ShinyText`, `PillNav`, `SpotlightCard`, `GlareHover`, `Magnet`, `StarBorder`, `ClickSpark`, `Stepper`, `StatusMark`, `ThoughtLine`, `Scanner`, `AnimatedList`, `CountUp`, `MagicBento`, `FadeContent`.
+- Removed the legacy hand-written `apps/web/src/components/react-bits/` directory so only genuine upstream React Bits source components remain.
+
+### 2. Visual Layer Architecture & Design Adjustments
+- **Palette & Typography**: Dark civic-tech theme (`#070a12` near-black background, `#0f1624` surface cards, `#1e293b` borders, `#3b82f6` single primary accent, emerald/amber/red reserved strictly for hazard severity, `Plus Jakarta Sans` UI font + `JetBrains Mono` tabular numbers/IDs/coordinates).
+- **Home (`HomePage.tsx`)**: Lazy-loaded `Topography` hero background (`opacity=0.38`, `mouseInteraction=false`) with static CSS radial/linear gradient fallback, `BlurText` headline, `ShinyText` hackathon badge, `StarBorder` + `Magnet` + `ClickSpark` on the single primary CTA, `CountUp` metrics (total inspections, geolocated pins, high/critical hazards, average severity), `SpotlightCard` + `GlareHover` module entry cards, `MagicBento` 6-card capability grid, `FadeContent` (`SectionReveal`), and subtle lazy-loaded `Noise` (`patternAlpha=10`).
+- **Global Navigation (`App.tsx`)**: Desktop `PillNav` (`theme="dark"`, `surface="glass"`, `layout="joined"`) paired with a clean 5-item mobile bottom navigation bar (`md:hidden`) and explicit opt-in `Demo: ON` / `Live API` switch + `"Replaying cached real responses"` banner.
+- **Road & Construction Inspection Flows (`RoadPage.tsx`, `ConstructionPage.tsx`, `InspectionProgressStepper.tsx`)**: 4-stage `Stepper` + `StatusMark` + `ThoughtLine` + lazy-loaded small-area `Scanner` (`76×76px`) during active SSE pipeline execution; `AnimatedList` for road defect selection; `StarBorder` + `Magnet` + `ClickSpark` on the primary inspection trigger.
+- **Map & Reports (`MapPage.tsx`, `ReportsPage.tsx`, `ReportDetailPage.tsx`)**: Calm, fast layouts with zero heavy WebGL/canvas backgrounds; `CountUp` counters on `MapPage`; `SectionReveal` (`FadeContent`) on filter/summary cards.
+- **Untouched Inspection Primitives**: `MaskOverlayViewer`, `BeforeAfterSlider`, and `InspectionMap` remain completely crisp with zero shaders, glare, tilt, or decorative overlays.
+- **Skipped Optional Cursor**: Intentionally skipped `TargetCursor` because its registry entry targets `react-dom@^19.0.0` (project runs React `18.3.1`) and custom cursors reduce precision when inspecting sub-pixel SAM 3.1 masks and Leaflet map pins.
+
+### 3. Performance, `prefers-reduced-motion` & End-to-End Verification
+- **Lazy Loading & Route Splitting**: `Topography`, `Noise`, and `Scanner` are lazy-loaded with `React.lazy` + `Suspense`, and secondary routes (`RoadPage`, `ConstructionPage`, `MapPage`, `ReportsPage`, `ReportDetailPage`) are code-split into separate chunks.
+- **`prefers-reduced-motion` & Small-Screen (`< 640px`) Verification (Headless Chromium CDP)**:
+  - `prefers-reduced-motion: reduce` at `1280×800`: verified `allowHeavyVisuals === false` (`Topography`, `Noise`, and `Scanner` do not mount; `BlurText` renders plain `<h1>`; `ShinyText`, `Magnet`, `ClickSpark`, `StarBorder` sparkles, `AnimatedList` slide, and `FadeContent` transitions are disabled; global CSS `@media (prefers-reduced-motion: reduce)` rule active).
+  - Mobile viewport (`390×844`): verified `Topography` and `Noise` do not mount and mobile bottom bar renders cleanly.
+- **End-to-End UI Flow Verification (Headless Chromium CDP)**:
+  - Verified Live Mode on `/road` without `MODEL_API_KEY` surfaces the explicit Live Mode error and never switches silently to Demo Mode.
+  - Verified toggling opt-in Demo Mode displays the `"Replaying cached real responses"` banner.
+  - Verified full frontend flow (`select/upload image -> MaskOverlayViewer SVG path rendering -> AnimatedList selection -> geolocation & municipal report view`).
+- **Real Lighthouse Mobile Audit (`lighthouse 13.6.0` against production `vite preview` at `http://127.0.0.1:4173/`)**:
+  - **Mobile Performance Score**: **99 / 100**
+    - First Contentful Paint (FCP): `1.4 s`
+    - Largest Contentful Paint (LCP): `1.4 s`
+    - Total Blocking Time (TBT): `90 ms`
+    - Cumulative Layout Shift (CLS): `0`
+    - Speed Index: `1.4 s`
+  - **Mobile Accessibility Score**: **100 / 100**
+
+### 4. License & Attribution
+- Recorded all 18 React Bits components and the verbatim `MIT + Commons Clause License Condition v1.0` (`Copyright (c) 2026 David Haz`) from `https://github.com/DavidHDev/react-bits/blob/main/LICENSE.md` in `THIRD_PARTY.md`, and added a React Bits credit line in the `README.md` footer.
+
+### 5. Verification Suite Summary (2026-10-30)
+- `pnpm typecheck`: Passed (`@viaguard/core`, `@viaguard/api`, `@viaguard/web`).
+- `pnpm lint`: Passed (`@viaguard/core`, `@viaguard/api`, `@viaguard/web`).
+- `pnpm test`: Passed (`23/23` tests: 13 in `@viaguard/core` + 10 in `@viaguard/api`).
+- `pnpm build`: Passed cleanly across all workspace packages with separate lazy chunks for `Topography`, `Noise`, `Scanner`, `InspectionMap`, and route views.
