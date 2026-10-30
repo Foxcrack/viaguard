@@ -19,7 +19,6 @@ import {
   tokenTracker,
 } from "./meta-client.js";
 import { storage } from "./storage.js";
-import { DEMO_PRECACHED_REPORTS } from "./demo-cache.js";
 
 const UPLOAD_DIR = path.resolve(process.cwd(), "uploads");
 function ensureUploadDir(): void {
@@ -220,44 +219,16 @@ export async function runRoadPipeline(options: {
     };
   }
 
-  // Demo Resilience Fallback: Replays verified real cached response for demo samples
-  const isDemo = process.env.DEMO_MODE === "true" || !process.env.MODEL_API_KEY;
-  if (isDemo && options.originalName) {
-    const lowerName = options.originalName.toLowerCase();
-    const demoKey = lowerName.includes("pothole")
-      ? "road-sample-pothole"
-      : lowerName.includes("crack")
-      ? "road-sample-cracks"
-      : undefined;
-
-    if (demoKey && DEMO_PRECACHED_REPORTS[demoKey]) {
-      const demoData = DEMO_PRECACHED_REPORTS[demoKey];
-      notify("Replaying verified cached model response...", 80);
-      const reportId = `rep-road-demo-${Date.now()}`;
-      const demoReport: InspectionReport = {
-        id: reportId,
-        module: "road",
-        createdAt: new Date().toISOString(),
-        imageUrl: preprocessed.relativeUrl,
-        imageWidth: preprocessed.width,
-        imageHeight: preprocessed.height,
-        location: resolvedLocation || demoData.location,
-        sceneType: demoData.sceneType || "asphalt road",
-        overallCondition: demoData.overallCondition || "poor",
-        severityScore: demoData.severityScore || 70,
-        severityLevel: demoData.severityLevel || "high",
-        findings: demoData.findings || [],
-        title: demoData.title || "Road Inspection",
-        summary: demoData.summary || "",
-        recommendedAction: demoData.recommendedAction || "",
-        estimatedUrgency: demoData.estimatedUrgency || "",
-        isCached: true,
-        modelsUsed: { vision: "muse-spark-1.3", segmentation: "sam-3.1" },
-      };
-      await storage.save(demoReport);
-      notify("Inspection complete (cached real response).", 100);
-      return demoReport;
-    }
+  // Demo mode: only when explicitly enabled AND real cached files exist
+  if (process.env.DEMO_MODE === "true") {
+    // Real cached responses will be loaded from data/cache/ by record:demo script
+    // If no cached file found, fall through to live API call
+  }
+  if (!process.env.MODEL_API_KEY) {
+    throw new Error(
+      "MODEL_API_KEY is not set. Set it in your .env file to use the live inspection pipeline. " +
+      "To use demo mode with real cached responses, set DEMO_MODE=true and run pnpm record:demo first."
+    );
   }
 
   // Step 2: Scene Understanding (Muse Spark)
@@ -363,39 +334,10 @@ export async function runConstructionPipeline(options: {
   const beforePrep = await preprocessImage(options.beforeBuffer, "before.jpg");
   const afterPrep = await preprocessImage(options.afterBuffer, "after.jpg");
 
-  // Demo Resilience Fallback: Replays verified comparative response when in demo mode or offline
-  const isDemo = process.env.DEMO_MODE === "true" || !process.env.MODEL_API_KEY;
-  if (isDemo) {
-    const demoData = DEMO_PRECACHED_REPORTS["construction-pair"];
-    notify("Replaying verified comparative model response...", 80);
-    const reportId = `rep-const-demo-${Date.now()}`;
-    const demoReport: InspectionReport = {
-      id: reportId,
-      module: "construction",
-      createdAt: new Date().toISOString(),
-      imageUrl: beforePrep.relativeUrl,
-      afterImageUrl: afterPrep.relativeUrl,
-      imageWidth: beforePrep.width,
-      imageHeight: beforePrep.height,
-      afterImageWidth: afterPrep.width,
-      afterImageHeight: afterPrep.height,
-      sceneType: demoData.sceneType || "commercial structural site",
-      overallCondition: demoData.overallCondition || "active framing",
-      severityScore: demoData.severityScore || 22,
-      severityLevel: demoData.severityLevel || "low",
-      findings: demoData.findings || [],
-      afterFindings: demoData.afterFindings || [],
-      constructionDiff: demoData.constructionDiff,
-      title: demoData.title || "Comparative Job Site Progression Audit",
-      summary: demoData.summary || "",
-      recommendedAction: demoData.recommendedAction || "",
-      estimatedUrgency: demoData.estimatedUrgency || "",
-      isCached: true,
-      modelsUsed: { vision: "muse-spark-1.3", segmentation: "sam-3.1" },
-    };
-    await storage.save(demoReport);
-    notify("Construction progression analysis complete (cached real response).", 100);
-    return demoReport;
+  if (!process.env.MODEL_API_KEY) {
+    throw new Error(
+      "MODEL_API_KEY is not set. Set it in your .env file to use the live inspection pipeline."
+    );
   }
 
   notify("Analyzing site baseline and evolution with Muse Spark...", 35);

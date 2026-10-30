@@ -179,3 +179,4 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
     </div>
   );
 };
+

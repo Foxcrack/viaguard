@@ -190,3 +190,4 @@ export const ReportDetailPage: React.FC = () => {
     </div>
   );
 };
+

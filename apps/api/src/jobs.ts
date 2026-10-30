@@ -48,3 +48,4 @@ export const jobManager = {
     return jobs.get(id);
   },
 };
+

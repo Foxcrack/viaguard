@@ -81,3 +81,4 @@ describe("calculateSeverity", () => {
     expect(result.level).toBe("critical");
   });
 });
+

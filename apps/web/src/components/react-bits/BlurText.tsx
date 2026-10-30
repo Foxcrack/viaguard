@@ -51,3 +51,4 @@ export const BlurText: React.FC<BlurTextProps> = ({
     </span>
   );
 };
+

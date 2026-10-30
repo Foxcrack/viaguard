@@ -10,7 +10,8 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "check:meta": "pnpm --filter @viaguard/api check:meta",
-    "analyze:sample": "pnpm --filter @viaguard/api analyze:sample"
+    "analyze:sample": "pnpm --filter @viaguard/api analyze:sample",
+    "record:demo": "pnpm --filter @viaguard/api record:demo"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",

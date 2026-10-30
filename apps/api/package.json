@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "check:meta": "tsx src/check-meta.ts",
-    "analyze:sample": "tsx src/cli-sample.ts"
+    "analyze:sample": "tsx src/cli-sample.ts",
+    "record:demo": "tsx src/record-demo.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",

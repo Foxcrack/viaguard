@@ -86,3 +86,4 @@ describe("compareConstructionSites", () => {
     expect(wallChange?.deltaAreaPercent).toBe(0);
   });
 });
+

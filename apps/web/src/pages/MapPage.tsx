@@ -138,3 +138,4 @@ export const MapPage: React.FC = () => {
     </div>
   );
 };
+

@@ -6,3 +6,4 @@ describe("core package", () => {
     expect(VERSION).toBe("0.1.0");
   });
 });
+

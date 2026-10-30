@@ -9,3 +9,4 @@ Place test images here in `.jpg`, `.jpeg`, `.png`, or `.webp` format.
 - **Construction Progress**: Pairs of photos of the same site (e.g. `construction-before.jpg` and `construction-after.jpg`) showing progression (such as newly erected scaffolding, poured concrete, rebar installation) or deterioration.
 
 Any photos placed in this directory will be indexed by the `/api/demo/samples` endpoint and made accessible in the UI sample picker.
+

@@ -80,3 +80,4 @@ export const storage = {
     return false;
   },
 };
+

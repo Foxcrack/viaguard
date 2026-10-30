@@ -122,3 +122,4 @@ async function runCheck() {
 }
 
 runCheck();
+

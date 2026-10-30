@@ -75,3 +75,4 @@ describe("Schema Validation", () => {
     expect(parsed.severityLevel).toBe("medium");
   });
 });
+

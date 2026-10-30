@@ -83,4 +83,5 @@ Viaguard depends strictly on Meta's models through the official Meta Model API:
 - [x] **Meta Models Verified**: Strictly powered by `sam-3.1` and `muse-spark-1.3` via the Meta Model API.
 - [x] **Offline Resilience**: Demo Mode fallback verified for seamless judge evaluation.
 - [x] **Tests Passing**: 21 unit and integration tests passing (`pnpm test`).
-- [x] **Submission Deadline**: Submitted before November 4, 2026, 9:00 PM ET.
+- [x] **Submission Deadline**: Submitted before November 4, 2026, 9:00 PM ET via https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit
+

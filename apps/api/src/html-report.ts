@@ -207,3 +207,4 @@ export function generateHtmlReport(report: InspectionReport): string {
 </body>
 </html>`;
 }
+
