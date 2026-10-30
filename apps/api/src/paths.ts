@@ -43,3 +43,4 @@ export function resolveInputPath(inputArg: string): string | null {
   }
   return null;
 }
+

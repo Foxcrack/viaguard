@@ -7,24 +7,35 @@ export default {
   theme: {
     extend: {
       colors: {
-        background: "#090d16",
-        surface: "#111827",
-        border: "#1f2937",
+        background: "#070a12",
+        surface: "#0f1624",
+        border: "#1e293b",
         accent: {
+          blue: "#3b82f6",
           green: "#10b981",
           amber: "#f59e0b",
           red: "#ef4444",
-          blue: "#3b82f6",
         },
       },
-      keyframes: {
-        shine: {
-          "0%": { backgroundPosition: "200% 0" },
-          "100%": { backgroundPosition: "-200% 0" },
-        },
-      },
-      animation: {
-        shine: "shine 5s linear infinite",
+      fontFamily: {
+        sans: [
+          "Inter",
+          "ui-sans-serif",
+          "system-ui",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
+          "Roboto",
+          "sans-serif",
+        ],
+        mono: [
+          "JetBrains Mono",
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "Consolas",
+          "monospace",
+        ],
       },
     },
   },
