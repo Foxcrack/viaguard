@@ -149,6 +149,11 @@ export function generateHtmlReport(report: InspectionReport): string {
         <h1 style="margin: 0; font-size: 24px; color: #0f172a;">${report.title}</h1>
         <div style="font-size: 12px; color: #64748b; margin-top: 4px;">
           Report ID: <strong>${report.id}</strong> | Timestamp: ${new Date(report.createdAt).toLocaleString()}
+          ${
+            report.privacyBlurApplied !== false
+              ? ` | <span style="display: inline-block; padding: 1px 8px; border-radius: 9999px; background: #eff6ff; border: 1px solid #93c5fd; color: #1d4ed8; font-weight: 600; font-size: 11px;">Privacy blur: on</span>`
+              : ""
+          }
         </div>
       </div>
       <div style="text-align: right;">

@@ -94,6 +94,10 @@ async function main() {
     console.log(`Scene Type:         ${report.sceneType}`);
     console.log(`Action Required:    ${report.recommendedAction}`);
     console.log(`Urgency:            ${report.estimatedUrgency}`);
+    console.log(`Stored Image:       ${report.imageUrl}`);
+    console.log(
+      `Privacy Blur:       ${report.privacyBlurApplied ? "on" : "off"} (${report.privacyRegionsBlurred} regions blurred)`
+    );
     console.log(`Cached:             ${report.isCached ? "YES" : "NO"}`);
     console.log(`Total Findings:     ${report.findings.length}`);
     for (const f of report.findings) {

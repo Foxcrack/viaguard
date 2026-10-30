@@ -19,6 +19,7 @@ import {
   TrendingDown,
   AlertTriangle,
   Layers,
+  ShieldCheck,
 } from "lucide-react";
 
 export const ConstructionPage: React.FC = () => {
@@ -35,6 +36,7 @@ export const ConstructionPage: React.FC = () => {
   const [report, setReport] = useState<InspectionReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showOverlays, setShowOverlays] = useState(true);
+  const [privacyBlur, setPrivacyBlur] = useState(true);
 
   useEffect(() => {
     api.getSamples().then((all) => {
@@ -104,7 +106,8 @@ export const ConstructionPage: React.FC = () => {
         beforeFile,
         afterFile,
         (p) => setProgress(p),
-        demoMode
+        demoMode,
+        privacyBlur
       );
       setReport(result);
     } catch (err: any) {
@@ -249,22 +252,48 @@ export const ConstructionPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Sample Pair Loader */}
-          <div className="bg-surface border border-border rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
-            <div className="text-slate-400">
-              Load bundled construction before/after test images (<code className="font-mono text-[11px]">apps/web/public/samples/</code>):
+          {/* Sample Pair Loader & Privacy Blur Toggle */}
+          <div className="bg-surface border border-border rounded-2xl p-4 space-y-3 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-border">
+              <label className="flex items-center space-x-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={privacyBlur}
+                  onChange={(e) => setPrivacyBlur(e.target.checked)}
+                  className="rounded border-border bg-slate-900 text-blue-500 focus:ring-blue-500"
+                />
+                <span className="font-medium text-slate-300">
+                  Privacy Protection (Auto-blur site personnel &amp; license plates)
+                </span>
+              </label>
+              <span
+                className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full font-mono text-[11px] font-semibold border ${
+                  privacyBlur
+                    ? "bg-blue-500/15 border-blue-500/35 text-blue-300"
+                    : "bg-slate-800 border-border text-slate-400"
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                <span>{privacyBlur ? "Privacy blur: on" : "Privacy blur: off"}</span>
+              </span>
             </div>
-            <ClickSpark sparkColor="#60a5fa" disabled={prefersReducedMotion}>
-              <Magnet padding={24} magnetStrength={2} disabled={prefersReducedMotion || isSmallScreen}>
-                <button
-                  type="button"
-                  onClick={handleLoadSamplePair}
-                  className="min-h-[38px] px-4 py-2 rounded-xl bg-background hover:bg-slate-800 border border-border text-slate-200 hover:text-white font-semibold transition"
-                >
-                  Load Construction Before/After Pair
-                </button>
-              </Magnet>
-            </ClickSpark>
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-slate-400">
+                Load bundled construction before/after test images (<code className="font-mono text-[11px]">apps/web/public/samples/</code>):
+              </div>
+              <ClickSpark sparkColor="#60a5fa" disabled={prefersReducedMotion}>
+                <Magnet padding={24} magnetStrength={2} disabled={prefersReducedMotion || isSmallScreen}>
+                  <button
+                    type="button"
+                    onClick={handleLoadSamplePair}
+                    className="min-h-[38px] px-4 py-2 rounded-xl bg-background hover:bg-slate-800 border border-border text-slate-200 hover:text-white font-semibold transition"
+                  >
+                    Load Construction Before/After Pair
+                  </button>
+                </Magnet>
+              </ClickSpark>
+            </div>
           </div>
 
           {/* Error Banner */}
@@ -370,6 +399,12 @@ export const ConstructionPage: React.FC = () => {
                   <span className="font-mono text-xs text-slate-400">
                     ID: <strong className="text-slate-200">{report.id}</strong>
                   </span>
+                  {report.privacyBlurApplied !== false && (
+                    <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/35 text-blue-300 font-mono text-xs font-semibold">
+                      <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Privacy blur: on</span>
+                    </span>
+                  )}
                 </div>
                 <h2 className="text-2xl font-black text-white">{report.title}</h2>
                 <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">

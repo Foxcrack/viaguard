@@ -15,8 +15,10 @@ import {
   StructuredReport,
   StructuredReportSchema,
   DamageFinding,
+  CandidateFinding,
   DEFAULT_ROAD_CONCEPTS,
   DEFAULT_CONSTRUCTION_CONCEPTS,
+  sanitizeConcept,
 } from "@viaguard/core";
 import { CACHE_DIR } from "./paths.js";
 
@@ -71,8 +73,13 @@ const SCENE_UNDERSTANDING_JSON_SCHEMA = {
     },
     visible_damage_types: {
       type: "array",
-      items: { type: "string" },
-      description: "Short noun phrases suitable as single-concept SAM 3.1 prompts",
+      items: {
+        type: "string",
+        description:
+          "Strictly 1 or 2 words, plain nouns only (e.g. 'pothole', 'crack', 'patch', 'manhole cover'). Never use adjectives like 'cracked' or 'damaged', never exceed 2 words, and never output 'road marking'.",
+      },
+      description:
+        "List of 1-to-2-word plain nouns only suitable as single-concept SAM 3.1 prompts",
     },
     overall_condition: {
       type: "string",
@@ -347,13 +354,13 @@ export async function understandSceneWithMuseSpark(options: {
       ? `You are an expert civic infrastructure engineer inspecting road conditions. Analyze this street image.
 Return a JSON object matching the schema with:
 - "scene_type": e.g. "asphalt road", "concrete highway", "residential street", "intersection"
-- "visible_damage_types": up to 4 SHORT noun phrases suitable as SAM 3.1 concept prompts, e.g. ["pothole", "crack", "damaged road surface", "manhole cover"]
+- "visible_damage_types": up to 4 concepts for SAM 3.1 segmentation. STRICT RULES: each item MUST be 1 or 2 words, plain nouns ONLY (e.g. ["pothole", "crack", "patch", "manhole cover", "sinkhole", "debris"]). NEVER output 3+ words, NEVER include adjectives or participles like "cracked", "damaged", "broken", or "worn", and NEVER output paint or background labels like "road marking" or "road surface".
 - "overall_condition": e.g. "poor", "fair", "good", "critical"
 - "notes": concise visual observations`
       : `You are an expert construction site inspector. Analyze this construction site image.
 Return a JSON object matching the schema with:
 - "scene_type": e.g. "commercial building foundation", "roadwork zone", "bridge construction"
-- "visible_damage_types": up to 5 SHORT noun phrases suitable as SAM 3.1 concept prompts, e.g. ["scaffolding", "concrete wall", "excavator", "steel rebar", "debris", "crack"]
+- "visible_damage_types": up to 5 concepts for SAM 3.1 segmentation. STRICT RULES: each item MUST be 1 or 2 words, plain nouns ONLY (e.g. ["scaffolding", "concrete wall", "excavator", "steel rebar", "debris", "crack"]). NEVER output 3+ words and NEVER include adjectives like "damaged", "cracked", or "exposed".
 - "overall_condition": e.g. "active framing", "excavation", "structural installation"
 - "notes": concise visual observations`;
 
@@ -366,7 +373,17 @@ Return a JSON object matching the schema with:
         "No cached real API response found in data/cache/ for this image. Set MODEL_API_KEY in .env and run 'pnpm record:demo <image>' first, or turn off Demo Mode."
       );
     }
-    return { scene: cached, isCached: true };
+    const sanitizedCached: SceneUnderstanding = {
+      ...cached,
+      visible_damage_types: Array.from(
+        new Set(
+          cached.visible_damage_types
+            .map((c) => sanitizeConcept(c))
+            .filter((c): c is string => c !== null)
+        )
+      ),
+    };
+    return { scene: sanitizedCached, isCached: true };
   }
 
   const mime = options.mimeType || "image/jpeg";
@@ -397,11 +414,22 @@ Return a JSON object matching the schema with:
       clientOverride: options.clientOverride,
     });
 
+    const sanitizedScene: SceneUnderstanding = {
+      ...validated,
+      visible_damage_types: Array.from(
+        new Set(
+          validated.visible_damage_types
+            .map((c) => sanitizeConcept(c))
+            .filter((c): c is string => c !== null)
+        )
+      ),
+    };
+
     if (options.recordToCache) {
-      setVerifiedCachedResult(cacheKey, model, options.imageHash, validated);
+      setVerifiedCachedResult(cacheKey, model, options.imageHash, sanitizedScene);
     }
 
-    return { scene: validated, isCached: false };
+    return { scene: sanitizedScene, isCached: false };
   } catch (err) {
     // Only fall back to default concepts when the live model returned malformed JSON after 1 retry;
     // propagate HTTP/auth/network errors directly.
@@ -436,7 +464,7 @@ export async function segmentConceptWithSAM(options: {
   mimeType?: string;
   useCache?: boolean;
   recordToCache?: boolean;
-}): Promise<{ findings: DamageFinding[]; isCached: boolean }> {
+}): Promise<{ findings: CandidateFinding[]; isCached: boolean }> {
   const model = "sam-3.1";
   const concept = options.concept.trim();
   const cacheKey = getCacheKey(model, `concept:${concept}`, options.imageHash);
@@ -454,7 +482,7 @@ export async function segmentConceptWithSAM(options: {
   const client = getMetaClient();
   const mime = options.mimeType || "image/jpeg";
 
-  const runSegmentation = async (): Promise<DamageFinding[]> => {
+  const runSegmentation = async (): Promise<CandidateFinding[]> => {
     const stream = (await client.responses.create({
       model,
       input: [
@@ -487,7 +515,7 @@ export async function segmentConceptWithSAM(options: {
     const maskRecords = recordsOfKind(result.records, "mask");
 
     const totalImagePixels = Math.max(options.imageWidth * options.imageHeight, 1);
-    const findings: DamageFinding[] = [];
+    const findings: CandidateFinding[] = [];
 
     for (let i = 0; i < maskRecords.length; i++) {
       const maskRec = maskRecords[i];
@@ -544,6 +572,7 @@ export async function segmentConceptWithSAM(options: {
           bottom: maskRec.bounds.bottom,
         },
         activePixels,
+        maskRaster: raster,
       });
     }
 
@@ -552,7 +581,10 @@ export async function segmentConceptWithSAM(options: {
 
   const findings = await withRetry(runSegmentation);
   if (options.recordToCache) {
-    setVerifiedCachedResult(cacheKey, model, options.imageHash, findings);
+    const serializableFindings: DamageFinding[] = findings.map(
+      ({ maskRaster: _maskRaster, ...rest }) => rest
+    );
+    setVerifiedCachedResult(cacheKey, model, options.imageHash, serializableFindings);
   }
   return { findings, isCached: false };
 }

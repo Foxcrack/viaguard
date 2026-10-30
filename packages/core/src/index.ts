@@ -49,7 +49,13 @@ export type DamageFinding = z.infer<typeof DamageFindingSchema>;
 // --- Scene Understanding Schema (Muse Spark Step 2) ---
 export const SceneUnderstandingSchema = z.object({
   scene_type: z.string(),
-  visible_damage_types: z.array(z.string()),
+  visible_damage_types: z
+    .array(
+      z
+        .string()
+        .describe("1 or 2 word plain noun only (e.g. 'pothole', 'crack', 'patch', 'manhole cover')")
+    )
+    .describe("Plain 1-2 word nouns suitable as single-concept SAM 3.1 prompts"),
   overall_condition: z.string(),
   notes: z.string().default(""),
 });
@@ -116,6 +122,8 @@ export const InspectionReportSchema = z.object({
   recommendedAction: z.string(),
   estimatedUrgency: z.string(),
   isCached: z.boolean().default(false),
+  privacyBlurApplied: z.boolean().default(true),
+  privacyRegionsBlurred: z.number().int().min(0).default(0),
   tokenUsage: z
     .object({
       promptTokens: z.number(),
@@ -132,11 +140,11 @@ export const InspectionReportSchema = z.object({
 });
 export type InspectionReport = z.infer<typeof InspectionReportSchema>;
 
-// --- Default SAM Concepts ---
+// --- Default SAM Concepts (1-2 word plain nouns only) ---
 export const DEFAULT_ROAD_CONCEPTS = [
   "pothole",
   "crack",
-  "damaged road surface",
+  "patch",
   "manhole cover",
 ] as const;
 
@@ -153,4 +161,5 @@ export const PRIVACY_CONCEPTS = ["person", "license plate"] as const;
 
 export * from "./scoring.js";
 export * from "./diff.js";
+export * from "./filtering.js";
 

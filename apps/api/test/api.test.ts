@@ -25,6 +25,7 @@ describe("Viaguard Backend API Endpoints", () => {
     expect(data.models.vision).toBe("muse-spark-1.3");
     expect(data.models.segmentation).toBe("sam-3.1");
     expect(typeof data.demoModeDefault).toBe("boolean");
+    expect(data.privacyBlurDefault).toBe(true);
   });
 
   it("GET /api/demo/samples returns bundled sample images", async () => {
@@ -154,6 +155,7 @@ describe("Viaguard Backend API Endpoints", () => {
     expect(htmlText).toContain("Official Inspection Report");
     expect(htmlText).toContain("HIGH SEVERITY (78/100)");
     expect(htmlText).toContain("Cold patch void immediately");
+    expect(htmlText).toContain("Privacy blur: on");
 
     const resJson = await app.request(`/api/reports/${mockReport.id}/export?format=json`);
     expect(resJson.status).toBe(200);
@@ -167,32 +169,112 @@ describe("Viaguard Backend API Endpoints", () => {
     expect(res.status).toBe(404);
   });
 
-  it("applyPrivacyBlur blurs sensitive coordinates without altering dimensions", async () => {
-    const rawBuffer = await sharp({
-      create: {
-        width: 400,
-        height: 300,
-        channels: 3,
-        background: { r: 120, g: 120, b: 120 },
-      },
+  it("applyPrivacyBlur blurs both 'person' and 'license plate' regions in the image without altering dimensions", async () => {
+    const width = 400;
+    const height = 300;
+    // Build raw RGB image with high-contrast bright white rectangles for person & license plate against dark gray background
+    const rawPixels = Buffer.alloc(width * height * 3, 40);
+    // Person sharp detail at [60..110, 80..200] (checkerboard high frequency)
+    for (let y = 80; y < 200; y++) {
+      for (let x = 60; x < 110; x++) {
+        const val = (x + y) % 2 === 0 ? 250 : 10;
+        const idx = (y * width + x) * 3;
+        rawPixels[idx] = val;
+        rawPixels[idx + 1] = val;
+        rawPixels[idx + 2] = val;
+      }
+    }
+    // Small license plate sharp detail at [250..274, 40..52]
+    for (let y = 40; y < 52; y++) {
+      for (let x = 250; x < 274; x++) {
+        const val = x % 2 === 0 ? 255 : 0;
+        const idx = (y * width + x) * 3;
+        rawPixels[idx] = val;
+        rawPixels[idx + 1] = val;
+        rawPixels[idx + 2] = val;
+      }
+    }
+
+    const rawBuffer = await sharp(rawPixels, {
+      raw: { width, height, channels: 3 },
     })
-      .jpeg()
+      .png()
       .toBuffer();
 
-    const privacyFinding: DamageFinding = {
-      id: "privacy-license-1",
-      concept: "license plate",
-      confidence: 0.95,
-      relativeAreaPercent: 2.0,
-      boundingBox: { x1: 50, y1: 50, x2: 150, y2: 100, width: 100, height: 50 },
-    };
+    const privacyFindings: DamageFinding[] = [
+      {
+        id: "privacy-person-1",
+        concept: "person",
+        confidence: 0.88,
+        relativeAreaPercent: 5.0,
+        boundingBox: { x1: 60, y1: 80, x2: 110, y2: 200, width: 50, height: 120 },
+      },
+      {
+        id: "privacy-plate-1",
+        concept: "license plate",
+        confidence: 0.62,
+        relativeAreaPercent: 0.24,
+        boundingBox: { x1: 250, y1: 40, x2: 274, y2: 52, width: 24, height: 12 },
+      },
+    ];
 
-    const blurredBuffer = await applyPrivacyBlur(rawBuffer, [privacyFinding]);
+    const blurredBuffer = await applyPrivacyBlur(rawBuffer, privacyFindings);
     expect(blurredBuffer.length).toBeGreaterThan(0);
 
     const meta = await sharp(blurredBuffer).metadata();
-    expect(meta.width).toBe(400);
-    expect(meta.height).toBe(300);
+    expect(meta.width).toBe(width);
+    expect(meta.height).toBe(height);
+
+    const { data: afterRaw, info } = await sharp(blurredBuffer)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+
+    // Verify high-frequency checkerboard contrast inside person & plate boxes was smoothed out by blur
+    const neighborDiff = (buf: Buffer, channels: number, x: number, y: number) => {
+      const i1 = (y * width + x) * channels;
+      const i2 = (y * width + (x + 1)) * channels;
+      return Math.abs(buf[i1] - buf[i2]);
+    };
+
+    expect(neighborDiff(rawPixels, 3, 80, 140)).toBe(240);
+    expect(neighborDiff(afterRaw, info.channels, 80, 140)).toBeLessThan(20);
+
+    expect(neighborDiff(rawPixels, 3, 260, 46)).toBe(255);
+    expect(neighborDiff(afterRaw, info.channels, 260, 46)).toBeLessThan(20);
+
+    // Outside unblurred background corner [380, 280] stays untouched
+    const cornerIdx = (280 * width + 380) * info.channels;
+    expect(afterRaw[cornerIdx]).toBe(40);
+  });
+
+  it("understandSceneWithMuseSpark strips adjectives and multi-word road-marking phrases from suggested concepts", async () => {
+    const fakeClient: any = {
+      responses: {
+        create: async () => ({
+          output_text: JSON.stringify({
+            scene_type: "urban crosswalk",
+            visible_damage_types: [
+              "pothole",
+              "cracked road marking",
+              "damaged road surface",
+              "patch",
+              "manhole cover",
+            ],
+            overall_condition: "poor",
+            notes: "Pothole near crosswalk",
+          }),
+        }),
+      },
+    };
+
+    const { scene } = await understandSceneWithMuseSpark({
+      imageBase64: "dGVzdA==",
+      imageHash: "test-sanitize-scene-concepts",
+      moduleType: "road",
+      clientOverride: fakeClient,
+    });
+
+    expect(scene.visible_damage_types).toEqual(["pothole", "patch", "manhole cover"]);
   });
 
   it("createStructuredResponse sends Responses API text.format json_schema (never response_format) and retries once on invalid JSON", async () => {

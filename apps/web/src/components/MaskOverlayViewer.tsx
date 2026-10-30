@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { DamageFinding } from "@viaguard/core";
-import { Eye, EyeOff, Layers, Sparkles } from "lucide-react";
+import { Eye, EyeOff, Layers, ShieldCheck, Sparkles } from "lucide-react";
 
 interface MaskOverlayViewerProps {
   imageUrl: string;
@@ -10,12 +10,17 @@ interface MaskOverlayViewerProps {
   selectedFindingId?: string | null;
   onSelectFinding?: (id: string | null) => void;
   title?: string;
+  privacyBlurApplied?: boolean;
+  privacyRegionsBlurred?: number;
 }
 
 const CONCEPT_COLORS: Record<string, { stroke: string; fill: string; chipBg: string }> = {
   pothole: { stroke: "#ef4444", fill: "rgba(239, 68, 68, 0.45)", chipBg: "bg-red-500/20 text-red-400 border-red-500/30" },
+  sinkhole: { stroke: "#dc2626", fill: "rgba(220, 38, 38, 0.5)", chipBg: "bg-red-600/20 text-red-300 border-red-500/30" },
   crack: { stroke: "#eab308", fill: "rgba(234, 179, 8, 0.45)", chipBg: "bg-amber-500/20 text-amber-400 border-amber-500/30" },
-  "damaged road surface": { stroke: "#f97316", fill: "rgba(249, 115, 22, 0.45)", chipBg: "bg-orange-500/20 text-orange-400 border-orange-500/30" },
+  patch: { stroke: "#f97316", fill: "rgba(249, 115, 22, 0.45)", chipBg: "bg-orange-500/20 text-orange-400 border-orange-500/30" },
+  spall: { stroke: "#fb923c", fill: "rgba(251, 146, 60, 0.45)", chipBg: "bg-orange-500/20 text-orange-300 border-orange-500/30" },
+  rut: { stroke: "#f59e0b", fill: "rgba(245, 158, 11, 0.45)", chipBg: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
   "manhole cover": { stroke: "#94a3b8", fill: "rgba(148, 163, 184, 0.35)", chipBg: "bg-slate-500/20 text-slate-300 border-slate-500/30" },
   scaffolding: { stroke: "#3b82f6", fill: "rgba(59, 130, 246, 0.45)", chipBg: "bg-blue-500/20 text-blue-400 border-blue-500/30" },
   "concrete wall": { stroke: "#8b5cf6", fill: "rgba(139, 92, 246, 0.45)", chipBg: "bg-purple-500/20 text-purple-400 border-purple-500/30" },
@@ -31,6 +36,8 @@ export const MaskOverlayViewer: React.FC<MaskOverlayViewerProps> = ({
   selectedFindingId,
   onSelectFinding,
   title,
+  privacyBlurApplied = true,
+  privacyRegionsBlurred,
 }) => {
   const [showMasks, setShowMasks] = useState(true);
   const [showBoxes, setShowBoxes] = useState(true);
@@ -203,12 +210,25 @@ export const MaskOverlayViewer: React.FC<MaskOverlayViewerProps> = ({
       </div>
 
       {/* Footer Info Pill */}
-      <div className="px-4 py-2 bg-surface/50 border-t border-border/60 flex items-center justify-between text-[11px] text-slate-400">
-        <div className="flex items-center space-x-1.5">
+      <div className="px-4 py-2 bg-surface/50 border-t border-border/60 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+        <div className="flex items-center space-x-2">
           <Sparkles className="w-3.5 h-3.5 text-blue-400" />
           <span>Interactive segmentation powered by Meta SAM 3.1 &amp; Muse Spark</span>
         </div>
-        <div>Areas measured relative to image sensor frame</div>
+        <div className="flex items-center space-x-2.5">
+          {privacyBlurApplied && (
+            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-300 font-mono text-[10px] font-semibold">
+              <ShieldCheck className="w-3 h-3 text-blue-400" />
+              <span>
+                Privacy blur: on
+                {typeof privacyRegionsBlurred === "number" && privacyRegionsBlurred > 0
+                  ? ` (${privacyRegionsBlurred} blurred)`
+                  : ""}
+              </span>
+            </span>
+          )}
+          <span>Areas measured relative to image sensor frame</span>
+        </div>
       </div>
     </div>
   );

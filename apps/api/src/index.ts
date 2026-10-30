@@ -33,6 +33,7 @@ app.get("/api/health", (c) => {
     timestamp: new Date().toISOString(),
     tokensTracked: tokenTracker.totalTokens,
     demoModeDefault: process.env.DEMO_MODE === "true",
+    privacyBlurDefault: true,
     liveApiConfigured: Boolean(process.env.MODEL_API_KEY && process.env.MODEL_API_KEY.trim() !== ""),
     models: {
       vision: "muse-spark-1.3",
@@ -197,6 +198,9 @@ app.post("/api/road/analyze", async (c) => {
       c.req.query("demoMode") === "true" ||
       process.env.DEMO_MODE === "true";
 
+    const privacyBlur =
+      formData["privacyBlur"] !== "false" && c.req.query("privacyBlur") !== "false";
+
     const isAsync = c.req.query("async") === "true";
 
     if (isAsync) {
@@ -210,6 +214,7 @@ app.post("/api/road/analyze", async (c) => {
             imageBuffer: buffer,
             originalName,
             clientLocation,
+            privacyBlur,
             demoMode: explicitDemoMode,
             onProgress: (step, percent) => {
               jobManager.updateJob(jobId, { step, percent });
@@ -236,6 +241,7 @@ app.post("/api/road/analyze", async (c) => {
         imageBuffer: buffer,
         originalName,
         clientLocation,
+        privacyBlur,
         demoMode: explicitDemoMode,
       });
       return c.json(report);
@@ -268,6 +274,9 @@ app.post("/api/construction/analyze", async (c) => {
       c.req.query("demoMode") === "true" ||
       process.env.DEMO_MODE === "true";
 
+    const privacyBlur =
+      formData["privacyBlur"] !== "false" && c.req.query("privacyBlur") !== "false";
+
     const isAsync = c.req.query("async") === "true";
 
     if (isAsync) {
@@ -280,6 +289,7 @@ app.post("/api/construction/analyze", async (c) => {
           const report = await runConstructionPipeline({
             beforeBuffer,
             afterBuffer,
+            privacyBlur,
             demoMode: explicitDemoMode,
             onProgress: (step, percent) => {
               jobManager.updateJob(jobId, { step, percent });
@@ -305,6 +315,7 @@ app.post("/api/construction/analyze", async (c) => {
       const report = await runConstructionPipeline({
         beforeBuffer,
         afterBuffer,
+        privacyBlur,
         demoMode: explicitDemoMode,
       });
       return c.json(report);

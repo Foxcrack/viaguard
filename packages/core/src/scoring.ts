@@ -1,11 +1,15 @@
 import { DamageFinding, SeverityLevel } from "./index.js";
 
 export const CONCEPT_WEIGHTS: Record<string, number> = {
+  sinkhole: 1.5,
   pothole: 1.4,
-  "damaged road surface": 1.2,
-  crack: 1.0,
-  debris: 1.1,
   "steel rebar": 1.2,
+  rebar: 1.2,
+  debris: 1.1,
+  rut: 1.1,
+  spall: 1.1,
+  crack: 1.0,
+  patch: 0.8,
   "manhole cover": 0.1, // Neutral reference element
 };
 

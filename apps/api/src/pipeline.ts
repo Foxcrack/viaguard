@@ -7,9 +7,14 @@ import {
   InspectionReport,
   GeoLocation,
   DamageFinding,
-  DEFAULT_CONSTRUCTION_CONCEPTS,
+  CandidateFinding,
+  PRIVACY_CONCEPTS,
+  PRIVACY_MIN_CONFIDENCE,
   calculateSeverity,
   compareConstructionSites,
+  sanitizeConcepts,
+  postProcessFindings,
+  deduplicateFindingsNMS,
 } from "@viaguard/core";
 import {
   understandSceneWithMuseSpark,
@@ -82,12 +87,14 @@ export interface PreprocessedImage {
   width: number;
   height: number;
   fileName: string;
+  filePath: string;
+  mimeType: string;
   relativeUrl: string;
   exifGps?: { latitude: number; longitude: number };
 }
 
 /**
- * Applies Gaussian blur to sensitive regions (pedestrians, license plates)
+ * Applies mosaic + Gaussian blur to sensitive regions ("person", "license plate")
  * for civic privacy-by-design compliance.
  */
 export async function applyPrivacyBlur(
@@ -103,15 +110,35 @@ export async function applyPrivacyBlur(
   const compositeOperations: sharp.OverlayOptions[] = [];
 
   for (const f of privacyFindings) {
-    const left = Math.max(0, Math.floor(f.boundingBox.x1));
-    const top = Math.max(0, Math.floor(f.boundingBox.y1));
-    const w = Math.min(width - left, Math.ceil(f.boundingBox.width));
-    const h = Math.min(height - top, Math.ceil(f.boundingBox.height));
+    const rawLeft = Math.floor(f.boundingBox.x1);
+    const rawTop = Math.floor(f.boundingBox.y1);
+    const rawRight = Math.ceil(f.boundingBox.x2);
+    const rawBottom = Math.ceil(f.boundingBox.y2);
+    const rawW = rawRight - rawLeft;
+    const rawH = rawBottom - rawTop;
 
-    if (w > 5 && h > 5) {
-      const blurredRegion = await sharp(imageBuffer)
+    if (rawW < 2 || rawH < 2) continue;
+
+    // Expand bounding box slightly so plate borders and facial edges are fully anonymized
+    const pad = Math.max(6, Math.round(Math.max(rawW, rawH) * 0.08));
+    const left = Math.max(0, rawLeft - pad);
+    const top = Math.max(0, rawTop - pad);
+    const right = Math.min(width, rawRight + pad);
+    const bottom = Math.min(height, rawBottom + pad);
+    const w = right - left;
+    const h = bottom - top;
+
+    if (w >= 2 && h >= 2) {
+      const mosaicW = Math.max(2, Math.min(w, Math.round(w / 10)));
+      const mosaicH = Math.max(2, Math.min(h, Math.round(h / 10)));
+      const downscaled = await sharp(imageBuffer)
         .extract({ left, top, width: w, height: h })
-        .blur(25)
+        .resize(mosaicW, mosaicH, { fit: "fill", kernel: "lanczos3" })
+        .toBuffer();
+
+      const blurredRegion = await sharp(downscaled)
+        .resize(w, h, { fit: "fill", kernel: "nearest" })
+        .blur(10)
         .toBuffer();
 
       compositeOperations.push({
@@ -123,7 +150,15 @@ export async function applyPrivacyBlur(
   }
 
   if (compositeOperations.length > 0) {
-    return await sharp(imageBuffer).composite(compositeOperations).toBuffer();
+    let pipeline = sharp(imageBuffer).composite(compositeOperations);
+    if (meta.format === "png") {
+      pipeline = pipeline.png();
+    } else if (meta.format === "webp") {
+      pipeline = pipeline.webp({ quality: 88 });
+    } else {
+      pipeline = pipeline.jpeg({ quality: 88 });
+    }
+    return await pipeline.toBuffer();
   }
   return imageBuffer;
 }
@@ -132,7 +167,7 @@ export async function applyPrivacyBlur(
  * Step 1: Preprocesses image:
  * - Validates size & MIME type
  * - Extracts EXIF GPS prior to any modifications
- * - Resizes long edge to max 1600px
+ * - Normalizes EXIF orientation and resizes long edge to max 1600px
  * - Computes sha256 hash
  * - Saves file to disk
  */
@@ -171,21 +206,31 @@ export async function preprocessImage(
   const originalWidth = meta.width || 800;
   const originalHeight = meta.height || 600;
   const maxDimension = 1600;
+  const needsOrientationFix = Boolean(meta.orientation && meta.orientation !== 1);
+  const needsResize = originalWidth > maxDimension || originalHeight > maxDimension;
 
   let processedBuffer = buffer;
   let finalWidth = originalWidth;
   let finalHeight = originalHeight;
 
-  if (originalWidth > maxDimension || originalHeight > maxDimension) {
-    processedBuffer = await sharp(buffer)
-      .resize({
-        width: originalWidth >= originalHeight ? maxDimension : undefined,
-        height: originalHeight > originalWidth ? maxDimension : undefined,
+  if (needsOrientationFix || needsResize) {
+    let transform = sharp(buffer).rotate();
+    if (needsResize) {
+      transform = transform.resize({
+        width: maxDimension,
+        height: maxDimension,
         fit: "inside",
         withoutEnlargement: true,
-      })
-      .jpeg({ quality: 85 })
-      .toBuffer();
+      });
+    }
+    if (meta.format === "png") {
+      transform = transform.png();
+    } else if (meta.format === "webp") {
+      transform = transform.webp({ quality: 85 });
+    } else {
+      transform = transform.jpeg({ quality: 85 });
+    }
+    processedBuffer = await transform.toBuffer();
 
     const resizedMeta = await sharp(processedBuffer).metadata();
     finalWidth = resizedMeta.width || finalWidth;
@@ -194,6 +239,8 @@ export async function preprocessImage(
 
   const hash = crypto.createHash("sha256").update(processedBuffer).digest("hex");
   const ext = meta.format === "png" ? "png" : meta.format === "webp" ? "webp" : "jpg";
+  const mimeType =
+    ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
   const fileName = `${Date.now()}-${hash.slice(0, 12)}.${ext}`;
   const filePath = path.join(UPLOAD_DIR, fileName);
 
@@ -206,6 +253,8 @@ export async function preprocessImage(
     width: finalWidth,
     height: finalHeight,
     fileName,
+    filePath,
+    mimeType,
     relativeUrl: `/uploads/${fileName}`,
     exifGps,
   };
@@ -235,6 +284,57 @@ async function runWithConcurrency<T, R>(
 export type ProgressCallback = (step: string, percent: number) => void;
 
 /**
+ * Segments privacy-sensitive concepts ("person", "license plate") with SAM 3.1
+ * and blurs those regions directly in the stored upload image on disk.
+ */
+async function segmentAndApplyPrivacyBlur(options: {
+  preprocessed: PreprocessedImage;
+  useCache: boolean;
+  recordToCache: boolean;
+}): Promise<{ regionsBlurred: number }> {
+  const privacyNested = await runWithConcurrency(
+    [...PRIVACY_CONCEPTS],
+    2,
+    async (concept) => {
+      try {
+        const { findings } = await segmentConceptWithSAM({
+          concept,
+          imageBase64: options.preprocessed.base64,
+          imageHash: options.preprocessed.hash,
+          imageWidth: options.preprocessed.width,
+          imageHeight: options.preprocessed.height,
+          mimeType: options.preprocessed.mimeType,
+          useCache: options.useCache,
+          recordToCache: options.recordToCache,
+        });
+        return findings;
+      } catch (err) {
+        if (options.useCache) {
+          return [];
+        }
+        throw err;
+      }
+    }
+  );
+
+  const rawPrivacy = privacyNested
+    .flat()
+    .filter((f) => f.confidence >= PRIVACY_MIN_CONFIDENCE);
+  const dedupedPrivacy = deduplicateFindingsNMS(rawPrivacy, 0.5);
+
+  if (dedupedPrivacy.length > 0) {
+    const blurredBuffer = await applyPrivacyBlur(
+      options.preprocessed.buffer,
+      dedupedPrivacy
+    );
+    fs.writeFileSync(options.preprocessed.filePath, blurredBuffer);
+    options.preprocessed.buffer = blurredBuffer;
+  }
+
+  return { regionsBlurred: dedupedPrivacy.length };
+}
+
+/**
  * Executes the complete 6-step Road Damage Inspection Pipeline.
  *
  * Honesty Rules:
@@ -247,11 +347,13 @@ export async function runRoadPipeline(options: {
   imageBuffer: Buffer;
   originalName?: string;
   clientLocation?: { latitude: number; longitude: number; source: "browser" | "manual" };
+  privacyBlur?: boolean;
   demoMode?: boolean;
   recordDemo?: boolean;
   onProgress?: ProgressCallback;
 }): Promise<InspectionReport> {
   const notify = options.onProgress || (() => {});
+  const privacyBlur = options.privacyBlur ?? true;
 
   // Step 1: Preprocess
   notify("Validating and optimizing image...", 15);
@@ -281,12 +383,28 @@ export async function runRoadPipeline(options: {
     const bundle = loadVerifiedDemoBundle("road", preprocessed.hash);
     if (bundle) {
       notify("Replaying cached real responses...", 85);
+      let regionsBlurred = bundle.report.privacyRegionsBlurred ?? 0;
+      if (privacyBlur) {
+        const blurRes = await segmentAndApplyPrivacyBlur({
+          preprocessed,
+          useCache: true,
+          recordToCache: false,
+        });
+        regionsBlurred = blurRes.regionsBlurred;
+      }
+      const filteredBundleFindings = postProcessFindings(bundle.report.findings);
+      const recomputedSeverity = calculateSeverity(filteredBundleFindings);
       const replayedReport: InspectionReport = {
         ...bundle.report,
         id: `rep-road-replay-${Date.now()}-${preprocessed.hash.slice(0, 6)}`,
         createdAt: new Date().toISOString(),
         imageUrl: preprocessed.relativeUrl,
         location: resolvedLocation ?? bundle.report.location,
+        findings: filteredBundleFindings,
+        severityScore: recomputedSeverity.score,
+        severityLevel: recomputedSeverity.level,
+        privacyBlurApplied: privacyBlur,
+        privacyRegionsBlurred: privacyBlur ? regionsBlurred : 0,
         isCached: true,
       };
       await storage.save(replayedReport);
@@ -300,11 +418,10 @@ export async function runRoadPipeline(options: {
       imageBase64: preprocessed.base64,
       imageHash: preprocessed.hash,
       moduleType: "road",
+      mimeType: preprocessed.mimeType,
       useCache: true,
     });
-    const conceptsToSegment = Array.from(
-      new Set([...scene.visible_damage_types.slice(0, 3), "pothole", "crack"])
-    ).slice(0, 4);
+    const conceptsToSegment = sanitizeConcepts(scene.visible_damage_types, "road", 4);
     notify("Replaying cached SAM 3.1 segmentations...", 60);
     const findingsNested = await runWithConcurrency(conceptsToSegment, 2, async (concept) => {
       const { findings } = await segmentConceptWithSAM({
@@ -313,17 +430,27 @@ export async function runRoadPipeline(options: {
         imageHash: preprocessed.hash,
         imageWidth: preprocessed.width,
         imageHeight: preprocessed.height,
+        mimeType: preprocessed.mimeType,
         useCache: true,
       });
       return findings;
     });
-    const allFindings = findingsNested.flat();
-    const severity = calculateSeverity(allFindings);
+    const filteredFindings = postProcessFindings(findingsNested.flat());
+    let regionsBlurred = 0;
+    if (privacyBlur) {
+      const blurRes = await segmentAndApplyPrivacyBlur({
+        preprocessed,
+        useCache: true,
+        recordToCache: false,
+      });
+      regionsBlurred = blurRes.regionsBlurred;
+    }
+    const severity = calculateSeverity(filteredFindings);
     notify("Replaying cached Muse Spark engineering report...", 90);
     const { report: structuredReport } = await writeReportWithMuseSpark({
       module: "road",
       scene,
-      findings: allFindings,
+      findings: filteredFindings,
       severityScore: severity.score,
       severityLevel: severity.level,
       imageHash: preprocessed.hash,
@@ -342,12 +469,14 @@ export async function runRoadPipeline(options: {
       overallCondition: scene.overall_condition,
       severityScore: severity.score,
       severityLevel: severity.level,
-      findings: allFindings,
+      findings: filteredFindings,
       title: structuredReport.title,
       summary: structuredReport.summary,
       recommendedAction: structuredReport.recommendedAction,
       estimatedUrgency: structuredReport.estimatedUrgency,
       isCached: true,
+      privacyBlurApplied: privacyBlur,
+      privacyRegionsBlurred: regionsBlurred,
       modelsUsed: {
         vision: "muse-spark-1.3",
         segmentation: "sam-3.1",
@@ -368,26 +497,21 @@ export async function runRoadPipeline(options: {
   const recordToCache = Boolean(options.recordDemo);
 
   // Step 2: Scene Understanding (Muse Spark)
-  notify("Understanding scene structure with Muse Spark...", 35);
+  notify("Understanding scene structure with Muse Spark...", 30);
   const { scene } = await understandSceneWithMuseSpark({
     imageBase64: preprocessed.base64,
     imageHash: preprocessed.hash,
     moduleType: "road",
+    mimeType: preprocessed.mimeType,
     useCache: false,
     recordToCache,
   });
 
-  // Select up to 4 concepts for SAM segmentation
-  const conceptsToSegment = Array.from(
-    new Set([
-      ...scene.visible_damage_types.slice(0, 3),
-      "pothole",
-      "crack",
-    ])
-  ).slice(0, 4);
+  // Sanitize concepts: 1-2 word plain nouns only, ALWAYS including "pothole" and "crack"
+  const conceptsToSegment = sanitizeConcepts(scene.visible_damage_types, "road", 4);
 
   // Step 3: SAM 3.1 Segmentation (concurrency limit = 2)
-  notify(`Segmenting road damage concepts (${conceptsToSegment.join(", ")})...`, 60);
+  notify(`Segmenting road damage concepts (${conceptsToSegment.join(", ")})...`, 55);
   const findingsNested = await runWithConcurrency(
     conceptsToSegment,
     2,
@@ -398,24 +522,40 @@ export async function runRoadPipeline(options: {
         imageHash: preprocessed.hash,
         imageWidth: preprocessed.width,
         imageHeight: preprocessed.height,
+        mimeType: preprocessed.mimeType,
         useCache: false,
         recordToCache,
       });
       return findings;
     }
   );
-  const allFindings: DamageFinding[] = findingsNested.flat();
+  const rawFindings: CandidateFinding[] = findingsNested.flat();
 
-  // Step 4: Deterministic Scoring
-  notify("Computing objective severity index and relative areas...", 75);
-  const severity = calculateSeverity(allFindings);
+  // Filter by per-concept confidence (0.5 pothole, 0.6 others) and apply cross-concept NMS (IoU > 0.5)
+  const filteredFindings: DamageFinding[] = postProcessFindings(rawFindings);
+
+  // Privacy Protection (ON by default): segment "person" and "license plate" and blur stored image
+  let privacyRegionsBlurred = 0;
+  if (privacyBlur) {
+    notify("Anonymizing pedestrians and license plates (privacy blur)...", 70);
+    const blurRes = await segmentAndApplyPrivacyBlur({
+      preprocessed,
+      useCache: false,
+      recordToCache,
+    });
+    privacyRegionsBlurred = blurRes.regionsBlurred;
+  }
+
+  // Step 4: Deterministic Scoring (computed strictly on filtered & deduplicated findings)
+  notify("Computing objective severity index and relative areas...", 80);
+  const severity = calculateSeverity(filteredFindings);
 
   // Step 5: Muse Spark Report Generation
   notify("Authoring municipal engineering report...", 90);
   const { report: structuredReport } = await writeReportWithMuseSpark({
     module: "road",
     scene,
-    findings: allFindings,
+    findings: filteredFindings,
     severityScore: severity.score,
     severityLevel: severity.level,
     imageHash: preprocessed.hash,
@@ -438,12 +578,14 @@ export async function runRoadPipeline(options: {
     overallCondition: scene.overall_condition,
     severityScore: severity.score,
     severityLevel: severity.level,
-    findings: allFindings,
+    findings: filteredFindings,
     title: structuredReport.title,
     summary: structuredReport.summary,
     recommendedAction: structuredReport.recommendedAction,
     estimatedUrgency: structuredReport.estimatedUrgency,
     isCached: false,
+    privacyBlurApplied: privacyBlur,
+    privacyRegionsBlurred,
     tokenUsage: {
       promptTokens: tokenTracker.totalPromptTokens,
       completionTokens: tokenTracker.totalCompletionTokens,
@@ -480,11 +622,13 @@ export async function runConstructionPipeline(options: {
   afterBuffer: Buffer;
   beforeName?: string;
   afterName?: string;
+  privacyBlur?: boolean;
   demoMode?: boolean;
   recordDemo?: boolean;
   onProgress?: ProgressCallback;
 }): Promise<InspectionReport> {
   const notify = options.onProgress || (() => {});
+  const privacyBlur = options.privacyBlur ?? true;
 
   notify("Pre-processing BEFORE and AFTER inspection images...", 15);
   const beforePrep = await preprocessImage(options.beforeBuffer, options.beforeName || "before.jpg");
@@ -503,12 +647,30 @@ export async function runConstructionPipeline(options: {
       );
     }
     notify("Replaying cached real responses...", 85);
+    let regionsBlurred = bundle.report.privacyRegionsBlurred ?? 0;
+    if (privacyBlur) {
+      const [bBlur, aBlur] = await Promise.all([
+        segmentAndApplyPrivacyBlur({
+          preprocessed: beforePrep,
+          useCache: true,
+          recordToCache: false,
+        }),
+        segmentAndApplyPrivacyBlur({
+          preprocessed: afterPrep,
+          useCache: true,
+          recordToCache: false,
+        }),
+      ]);
+      regionsBlurred = bBlur.regionsBlurred + aBlur.regionsBlurred;
+    }
     const replayedReport: InspectionReport = {
       ...bundle.report,
       id: `rep-const-replay-${Date.now()}-${afterPrep.hash.slice(0, 6)}`,
       createdAt: new Date().toISOString(),
       imageUrl: beforePrep.relativeUrl,
       afterImageUrl: afterPrep.relativeUrl,
+      privacyBlurApplied: privacyBlur,
+      privacyRegionsBlurred: privacyBlur ? regionsBlurred : 0,
       isCached: true,
     };
     await storage.save(replayedReport);
@@ -529,6 +691,7 @@ export async function runConstructionPipeline(options: {
     imageBase64: beforePrep.base64,
     imageHash: beforePrep.hash,
     moduleType: "construction",
+    mimeType: beforePrep.mimeType,
     useCache: false,
     recordToCache,
   });
@@ -537,19 +700,18 @@ export async function runConstructionPipeline(options: {
     imageBase64: afterPrep.base64,
     imageHash: afterPrep.hash,
     moduleType: "construction",
+    mimeType: afterPrep.mimeType,
     useCache: false,
     recordToCache,
   });
 
-  const comparativeConcepts = Array.from(
-    new Set([
-      ...beforeScene.visible_damage_types,
-      ...afterScene.visible_damage_types,
-      ...DEFAULT_CONSTRUCTION_CONCEPTS,
-    ])
-  ).slice(0, 5);
+  const comparativeConcepts = sanitizeConcepts(
+    [...beforeScene.visible_damage_types, ...afterScene.visible_damage_types],
+    "construction",
+    5
+  );
 
-  notify(`Running comparative SAM segmentation (${comparativeConcepts.join(", ")})...`, 60);
+  notify(`Running comparative SAM segmentation (${comparativeConcepts.join(", ")})...`, 55);
 
   const beforeFindingsNested = await runWithConcurrency(
     comparativeConcepts,
@@ -561,13 +723,14 @@ export async function runConstructionPipeline(options: {
         imageHash: beforePrep.hash,
         imageWidth: beforePrep.width,
         imageHeight: beforePrep.height,
+        mimeType: beforePrep.mimeType,
         useCache: false,
         recordToCache,
       });
       return findings;
     }
   );
-  const beforeFindings = beforeFindingsNested.flat();
+  const beforeFindings = postProcessFindings(beforeFindingsNested.flat());
 
   const afterFindingsNested = await runWithConcurrency(
     comparativeConcepts,
@@ -579,15 +742,34 @@ export async function runConstructionPipeline(options: {
         imageHash: afterPrep.hash,
         imageWidth: afterPrep.width,
         imageHeight: afterPrep.height,
+        mimeType: afterPrep.mimeType,
         useCache: false,
         recordToCache,
       });
       return findings;
     }
   );
-  const afterFindings = afterFindingsNested.flat();
+  const afterFindings = postProcessFindings(afterFindingsNested.flat());
 
-  notify("Computing quantitative diff and volumetric progress index...", 80);
+  let privacyRegionsBlurred = 0;
+  if (privacyBlur) {
+    notify("Anonymizing site personnel and license plates (privacy blur)...", 72);
+    const [bBlur, aBlur] = await Promise.all([
+      segmentAndApplyPrivacyBlur({
+        preprocessed: beforePrep,
+        useCache: false,
+        recordToCache,
+      }),
+      segmentAndApplyPrivacyBlur({
+        preprocessed: afterPrep,
+        useCache: false,
+        recordToCache,
+      }),
+    ]);
+    privacyRegionsBlurred = bBlur.regionsBlurred + aBlur.regionsBlurred;
+  }
+
+  notify("Computing quantitative diff and volumetric progress index...", 82);
   const diffResult = compareConstructionSites(
     beforeFindings,
     afterFindings,
@@ -641,6 +823,8 @@ export async function runConstructionPipeline(options: {
     recommendedAction: structuredReport.recommendedAction,
     estimatedUrgency: structuredReport.estimatedUrgency,
     isCached: false,
+    privacyBlurApplied: privacyBlur,
+    privacyRegionsBlurred,
     tokenUsage: {
       promptTokens: tokenTracker.totalPromptTokens,
       completionTokens: tokenTracker.totalCompletionTokens,

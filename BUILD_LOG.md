@@ -429,3 +429,49 @@ $ tsx src/check-meta.ts
   Lifetime Tokens Tracked: 758
 ==================================================
 ```
+
+
+---
+
+## 2026-10-30 – Concept Sanitizing, Confidence Filter, Cross-Concept NMS & Default-On Privacy Blur
+
+### 1. Root Cause Analysis on Real Street Photo (`rep-road-1793340667110-77ab2a87`)
+- **(a) False-positive `"cracked road marking"` masks**: `muse-spark-1.3` suggested the 3-word adjectival phrase `"cracked road marking"`, causing `sam-3.1` to segment two low-confidence (`0.55` and `0.60`) masks covering plain crosswalk stripes and asphalt (`4.2%` and `3.67%` frame area), inflating severity from `41` to `87/100 (critical)`.
+- **(b) Overlapping/duplicate masks**: No cross-instance Non-Maximum Suppression ran across SAM 3.1 outputs.
+- **(c) Unblurred pedestrians & vehicle plates**: `applyPrivacyBlur` existed in `apps/api/src/pipeline.ts` and `privacyBlur` defaulted to `true` in `RoadPage.tsx`, **but neither was connected**—the pipeline never segmented `PRIVACY_CONCEPTS` (`["person", "license plate"]`) or overwrote the stored upload image on disk. Additionally, chaining `.resize(...).resize(...)` on a single `sharp` instance overwrites the first resize instead of executing a two-stage mosaic pass.
+
+### 2. Fixes Implemented
+1. **Concept Sanitizing (`packages/core/src/filtering.ts`, `apps/api/src/meta-client.ts`, `apps/api/src/pipeline.ts`)**:
+   - Updated `SCENE_UNDERSTANDING_JSON_SCHEMA`, `SceneUnderstandingSchema`, and `understandSceneWithMuseSpark` prompts to require **1 or 2 words, plain nouns only** (e.g. `"pothole"`, `"crack"`, `"patch"`, `"manhole cover"`).
+   - Added `sanitizeConcept` and `sanitizeConcepts` in `@viaguard/core` to reject in code any concept longer than 2 words, containing adjectives/participles (`"cracked"`, `"damaged"`, `"broken"`, `"worn"`, `-ed` modifiers), or matching non-damage road paint/surface terms (`"road marking"`, `"road surface"`).
+   - Road inspections **always** include `"pothole"` and `"crack"` alongside sanitized Muse Spark suggestions.
+2. **Per-Concept Confidence Thresholds (`packages/core/src/filtering.ts`, documented in `README.md`)**:
+   - `POTHOLE_MIN_CONFIDENCE = 0.5` (discards `"pothole"` instances with confidence `< 0.5`).
+   - `DEFAULT_MIN_CONFIDENCE = 0.6` (discards all other concept instances with confidence `< 0.6`).
+3. **Cross-Instance Non-Maximum Suppression (`deduplicateFindingsNMS`, `NMS_IOU_THRESHOLD = 0.5`)**:
+   - Decodes SAM 3.1 binary rasters (`maskRaster` + `maskBounds`) to compute exact pixel-level `computeMaskIoU` alongside `computeBoxIoU` across **all** candidate instances regardless of concept label, keeping only the highest-confidence instance whenever `IoU > 0.5`.
+4. **Severity Scoring Recomputed Strictly on Filtered Instances (`packages/core/src/scoring.ts`)**:
+   - `calculateSeverity` now receives only `postProcessFindings(rawFindings)`. Added unit test in `packages/core/test/scoring.test.ts` reproducing the exact three-detection street photo case (`pothole` @ `0.69`, `cracked road marking` @ `0.55` and `0.60` -> filtered to `pothole` only -> score `41/100 medium`).
+5. **Privacy Blur ON by Default in UI & API (`apps/api/src/pipeline.ts`, `apps/api/src/index.ts`, `apps/web/`)**:
+   - Enabled `privacyBlur = true` by default in `runRoadPipeline`, `runConstructionPipeline`, `POST /api/road/analyze`, `POST /api/construction/analyze`, `RoadPage`, and `ConstructionPage`.
+   - Segments `"person"` and `"license plate"` with SAM 3.1 (`PRIVACY_MIN_CONFIDENCE = 0.25`), pads bounding boxes, applies a 2-stage mosaic downscale/upscale + Gaussian blur (`sharp`), and overwrites the stored file in `apps/api/uploads/<fileName>` so both stored and displayed images are anonymized.
+   - Added visible **`Privacy blur: on`** badges in `RoadPage`, `ConstructionPage`, `ReportDetailPage`, `MaskOverlayViewer`, and exported HTML/PDF reports.
+
+### 3. Verification Suite (`pnpm typecheck`, `pnpm test`, `pnpm build`)
+- `pnpm typecheck`: Passed (`0` errors across `@viaguard/core`, `@viaguard/api`, `@viaguard/web`).
+- `pnpm test`: Passed (`34/34` tests: `21` in `@viaguard/core` including `filtering.test.ts` & 3-detection severity test + `13` in `@viaguard/api` including pixel-level `person` + `license plate` blur verification).
+- `pnpm build`: Passed cleanly across all workspace packages.
+
+### 4. Re-Test on the Exact Same Real Street Photo (Before vs. After)
+
+- **Before (`rep-road-1793340667110-77ab2a87`)**:
+  - Findings (`3`): `pothole` (`0.69` conf, `6.73%` area), `cracked road marking` (`0.55` conf, `4.2%` area), `cracked road marking` (`0.60` conf, `3.67%` area).
+  - Severity: `87/100 (critical)`.
+  - Privacy Blur: `0` regions blurred (pedestrians and vehicle plates visible).
+
+- **After (`rep-road-1793341772861-77ab2a87`, live API run)**:
+  - Sanitized SAM 3.1 Concepts Queried: `["pothole", "crack", "debris", "puddle"]` (all 1-word plain nouns; `"cracked road marking"` eliminated).
+  - Filtered & NMS-Deduplicated Findings (`1`):
+    - `pothole`: `confidence = 0.69` (`69%`), `relativeAreaPercent = 6.72%`, `bbox = [419, 627, 1069, 1023]`.
+  - Recomputed Severity: **`41/100 (medium)`**.
+  - Privacy Blur: **`on` (`5` regions blurred)** — visually verified in stored `/uploads/1793341754934-77ab2a872434.jpg` that both pedestrians on/near the median and the visible front license plates on the background vehicles are completely blurred while the foreground pothole remains sharp.

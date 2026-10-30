@@ -20,6 +20,7 @@ import {
   Printer,
   RotateCcw,
   AlertTriangle,
+  ShieldCheck,
 } from "lucide-react";
 
 export const RoadPage: React.FC = () => {
@@ -103,7 +104,8 @@ export const RoadPage: React.FC = () => {
         selectedFile,
         location || undefined,
         (p) => setProgress(p),
-        demoMode
+        demoMode,
+        privacyBlur
       );
       setReport(result);
     } catch (err: any) {
@@ -232,8 +234,8 @@ export const RoadPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* Privacy Blur Toggle */}
-                <div className="pt-3 border-t border-border flex items-center justify-between text-xs text-slate-400">
+                {/* Privacy Blur Toggle (ON by default) */}
+                <div className="pt-3 border-t border-border flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
                   <label className="flex items-center space-x-2.5 cursor-pointer">
                     <input
                       type="checkbox"
@@ -245,8 +247,15 @@ export const RoadPage: React.FC = () => {
                       Privacy Protection (Auto-blur pedestrians &amp; license plates)
                     </span>
                   </label>
-                  <span className="font-mono text-[11px] text-blue-400 font-semibold">
-                    {privacyBlur ? "ACTIVE" : "OFF"}
+                  <span
+                    className={`inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full font-mono text-[11px] font-semibold border ${
+                      privacyBlur
+                        ? "bg-blue-500/15 border-blue-500/35 text-blue-300"
+                        : "bg-slate-800 border-border text-slate-400"
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                    <span>{privacyBlur ? "Privacy blur: on" : "Privacy blur: off"}</span>
                   </span>
                 </div>
 
@@ -411,6 +420,12 @@ export const RoadPage: React.FC = () => {
                 <span className="font-mono text-xs text-slate-400">
                   ID: <strong className="text-slate-200">{report.id}</strong>
                 </span>
+                {report.privacyBlurApplied !== false && (
+                  <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/35 text-blue-300 font-mono text-xs font-semibold">
+                    <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Privacy blur: on</span>
+                  </span>
+                )}
               </div>
               <h2 className="text-2xl font-black text-white">{report.title}</h2>
               <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
@@ -449,6 +464,8 @@ export const RoadPage: React.FC = () => {
                 selectedFindingId={selectedFindingId}
                 onSelectFinding={setSelectedFindingId}
                 title="SAM 3.1 Road Damage Mask Segmentation"
+                privacyBlurApplied={report.privacyBlurApplied !== false}
+                privacyRegionsBlurred={report.privacyRegionsBlurred}
               />
             </div>
 

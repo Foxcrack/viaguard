@@ -53,10 +53,12 @@ export const api = {
     file: File | Blob,
     location?: { latitude: number; longitude: number; source: "browser" | "manual" },
     onProgress?: (progress: ProgressState) => void,
-    demoMode?: boolean
+    demoMode?: boolean,
+    privacyBlur: boolean = true
   ): Promise<InspectionReport> {
     const formData = new FormData();
     formData.append("image", file);
+    formData.append("privacyBlur", String(privacyBlur));
     if (location) {
       formData.append("latitude", location.latitude.toString());
       formData.append("longitude", location.longitude.toString());
@@ -120,11 +122,13 @@ export const api = {
     beforeFile: File | Blob,
     afterFile: File | Blob,
     onProgress?: (progress: ProgressState) => void,
-    demoMode?: boolean
+    demoMode?: boolean,
+    privacyBlur: boolean = true
   ): Promise<InspectionReport> {
     const formData = new FormData();
     formData.append("before", beforeFile);
     formData.append("after", afterFile);
+    formData.append("privacyBlur", String(privacyBlur));
     if (demoMode === true) {
       formData.append("demoMode", "true");
     }

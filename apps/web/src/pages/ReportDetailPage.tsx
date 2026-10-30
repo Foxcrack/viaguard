@@ -6,7 +6,7 @@ import { InspectionReport } from "@viaguard/core";
 import { MaskOverlayViewer } from "../components/MaskOverlayViewer.tsx";
 import { InspectionMap } from "../components/InspectionMap.tsx";
 import { CachedReplayBanner, useDemoMode } from "../context/DemoModeContext.tsx";
-import { Printer, ArrowLeft, MapPin, Calendar, HardHat, ShieldAlert, Sparkles } from "lucide-react";
+import { Printer, ArrowLeft, MapPin, Calendar, HardHat, ShieldAlert, ShieldCheck, Sparkles } from "lucide-react";
 
 export const ReportDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -95,6 +95,12 @@ export const ReportDetailPage: React.FC = () => {
                 <Calendar className="w-3.5 h-3.5" />
                 <span>{new Date(report.createdAt).toLocaleString()}</span>
               </span>
+              {report.privacyBlurApplied !== false && (
+                <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/35 text-blue-300 font-mono text-[11px] font-semibold">
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Privacy blur: on</span>
+                </span>
+              )}
             </div>
 
             <span
@@ -144,6 +150,8 @@ export const ReportDetailPage: React.FC = () => {
           imageHeight={report.imageHeight}
           findings={report.findings}
           title={report.title}
+          privacyBlurApplied={report.privacyBlurApplied !== false}
+          privacyRegionsBlurred={report.privacyRegionsBlurred}
         />
       </div>
 

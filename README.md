@@ -73,9 +73,25 @@ flowchart TD
 
 ---
 
+## 🧹 SAM 3.1 Concept Sanitizing, Confidence Filtering & NMS
+
+To eliminate false-positive masks on plain asphalt or paint stripes and prevent overlapping duplicate detections, `packages/core/src/filtering.ts` enforces three post-processing stages before severity scoring and report generation:
+
+1. **Concept Sanitizing (`sanitizeConcept` / `sanitizeConcepts`)**:
+   - Forces `muse-spark-1.3` (via structured schema + prompt + code enforcement) to emit **1-to-2-word plain nouns only** (e.g., `"pothole"`, `"crack"`, `"patch"`, `"manhole cover"`).
+   - Rejects any concept longer than 2 words, any concept containing adjectives/modifiers (`"cracked"`, `"damaged"`, `"broken"`, `"worn"`), and paint/surface labels (`"road marking"`, `"road surface"`).
+   - Road inspections **always** include `"pothole"` and `"crack"` alongside sanitized Muse Spark suggestions.
+2. **Per-Concept Confidence Thresholds** (exported constants in `@viaguard/core`):
+   - `POTHOLE_MIN_CONFIDENCE = 0.5`: Discards `"pothole"` instances with SAM 3.1 confidence `< 0.5`.
+   - `DEFAULT_MIN_CONFIDENCE = 0.6`: Discards all other concept instances with SAM 3.1 confidence `< 0.6`.
+3. **Cross-Instance Non-Maximum Suppression (`NMS_IOU_THRESHOLD = 0.5`)**:
+   - Runs across **all** surviving instances regardless of concept label, computing pixel-level binary mask IoU (from `@meta-sam/parser` rasters) and bounding-box IoU. Whenever `IoU > 0.5`, only the highest-confidence instance is retained.
+
+---
+
 ## 📐 Deterministic Severity Scoring Formula
 
-Viaguard does **not** hallucinate severity numbers. Severity is calculated deterministically in `packages/core/src/scoring.ts` using verified measurements:
+Viaguard does **not** hallucinate severity numbers. Severity is calculated deterministically in `packages/core/src/scoring.ts` strictly from the **filtered, NMS-deduplicated** findings:
 
 $$\text{RawScore} = (S_{\text{area}} + S_{\text{count}} + 5) \times \left(0.7 + 0.3 \times C_{\text{avg}}\right) \times \frac{W_{\max}}{1.2}$$
 
@@ -83,25 +99,26 @@ $$\text{RawScore} = (S_{\text{area}} + S_{\text{count}} + 5) \times \left(0.7 + 
 - **Count Factor ($S_{\text{count}}$)**: $\min(N_{\text{damage}} \times 7.0, 35)$ (up to 35 points).
 - **Confidence Factor ($C_{\text{avg}}$)**: Average detection confidence $\in [0, 1]$.
 - **Hazard Multiplier ($W_{\max}$)**: Maximum concept weight:
+  - Sinkhole: $1.5$
   - Pothole: $1.4$ (vehicle damage / structural void hazard)
-  - Damaged road surface: $1.2$
+  - Debris / Rut / Spall: $1.1$
   - Crack: $1.0$ (water intrusion risk)
-  - Debris: $1.1$
+  - Patch: $0.8$
   - Manhole cover: $0.1$ (*neutral reference object; does not artificially escalate road hazard score*)
 - **Score Range**: Clamped to $[0, 100]$:
   - `0 - 24`: **Low** (routine cosmetic wear)
-  - `25 - 54`: **Medium** (moderate cracking)
-  - `55 - 79`: **High** (active pothole, asphalt breakdown)
+  - `25 - 54`: **Medium** (moderate cracking or single localized pothole)
+  - `55 - 79`: **High** (extensive pothole / multi-defect asphalt breakdown)
   - `80 - 100`: **Critical** (deep hazardous void requiring emergency closure)
 
 ---
 
-## 🔒 Privacy-by-Design Protection
+## 🔒 Privacy-by-Design Protection (ON by Default)
 
-Municipal street photos frequently capture pedestrians and vehicle license plates. Viaguard includes an integrated **Privacy Protection Module** (`applyPrivacyBlur`):
-- SAM 3.1 segments `"person"` and `"license plate"`.
-- A 25px Gaussian blur is composited directly over sensitive facial and license coordinates prior to image persistence.
-- Enabled by default in the UI inspection controls.
+Municipal street photos frequently capture pedestrians and vehicle license plates. Viaguard runs its **Privacy Protection Module** (`applyPrivacyBlur`) **ON by default** in both the REST API and web UI:
+- SAM 3.1 segments `"person"` and `"license plate"` (`PRIVACY_MIN_CONFIDENCE = 0.25`).
+- Padded mosaic + Gaussian blur is composited directly over detected pedestrian and license plate regions and written to the stored upload image (`apps/api/uploads/...`) so both persisted and displayed images are anonymized.
+- Inspected views and exported HTML/PDF work orders display a visible **`Privacy blur: on`** badge.
 
 ---
 
@@ -151,7 +168,7 @@ pnpm dev
 ```bash
 pnpm test
 ```
-Runs 23 Vitest tests validating severity scoring, area calculations, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
+Runs 34 Vitest tests validating concept sanitizing, confidence filtering, cross-concept NMS, severity scoring, area calculations, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
 
 ### 6. Run Headless CLI Inspection
 ```bash

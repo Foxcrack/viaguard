@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { calculateSeverity } from "../src/scoring.js";
-import { DamageFinding } from "../src/index.js";
+import { DamageFinding, postProcessFindings } from "../src/index.js";
 
 describe("calculateSeverity", () => {
   it("returns score 0 and low level when no damage findings are detected", () => {
@@ -79,6 +79,48 @@ describe("calculateSeverity", () => {
     const result = calculateSeverity(findings);
     expect(result.score).toBe(100);
     expect(result.level).toBe("critical");
+  });
+
+  it("recomputes severity using only filtered instances on the three-detection real-photo example", () => {
+    const rawDetections: DamageFinding[] = [
+      {
+        id: "finding-pothole-0",
+        concept: "pothole",
+        confidence: 0.69,
+        relativeAreaPercent: 6.73,
+        boundingBox: { x1: 419, y1: 627, x2: 1069, y2: 1023, width: 650, height: 396 },
+      },
+      {
+        id: "finding-cracked-marking-0",
+        concept: "cracked road marking",
+        confidence: 0.55,
+        relativeAreaPercent: 4.2,
+        boundingBox: { x1: 46, y1: 394, x2: 1195, y2: 770, width: 1149, height: 376 },
+      },
+      {
+        id: "finding-cracked-marking-1",
+        concept: "cracked road marking",
+        confidence: 0.6,
+        relativeAreaPercent: 3.67,
+        boundingBox: { x1: 0, y1: 765, x2: 1117, y2: 1398, width: 1117, height: 633 },
+      },
+    ];
+
+    const unfilteredEval = calculateSeverity(rawDetections);
+    expect(unfilteredEval.damageInstanceCount).toBe(3);
+    expect(unfilteredEval.score).toBe(87);
+
+    const filtered = postProcessFindings(rawDetections);
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].concept).toBe("pothole");
+    expect(filtered[0].confidence).toBe(0.69);
+
+    const filteredEval = calculateSeverity(filtered);
+    expect(filteredEval.damageInstanceCount).toBe(1);
+    expect(filteredEval.totalDamageAreaPercent).toBe(6.73);
+    expect(filteredEval.dominantConcept).toBe("pothole");
+    expect(filteredEval.score).toBeLessThan(unfilteredEval.score);
+    expect(filteredEval.score).toBe(41);
   });
 });
 
