@@ -616,3 +616,14 @@ Summary:
    - Extended `pnpm analyze:sample <before> <after>` to run `runConstructionPipeline` directly from CLI and verified two live runs against Meta Model API (`muse-spark-1.3` + `sam-3.1`):
      - Synthetic pair (`construction-before-site.jpg` &rarr; `construction-after-site.jpg`, `rep-const-1793590855439-1c2a4aa3`): `scaffolding` `0 -> 1` (`+3.94%` area, `PROGRESS`), `Progress Index: +18`, `Measured severity (SAM): 0/100 [LOW]`, `Visual condition (Muse Spark): GOOD`, `Urgency: within 30 days`.
      - Real street repair pair (`real-street-photo.jpg` &rarr; `real-street-after-patched.jpg`, `rep-const-1793591010054-7d511a3c`): `pothole` `1 -> 0` (`6.72% -> 0%`, `PROGRESS`), `Progress Index: +23`, `Privacy Blur: on (10 regions blurred)`, `Measured severity (SAM): 0/100 [LOW]`, `Visual condition (Muse Spark): FAIR`, `Urgency: within 30 days`.
+
+
+---
+
+## 2026-11-01 – README Math Rendering, Overclaim Removal, Validation Status & Development Transparency
+
+- **Plain-Text Formula Blocks (`README.md`)**: Replaced all LaTeX `$...$` / `$$...$$` math blocks with plain fenced `text` code blocks showing the severity formulas, configurable constants, concept weights, and urgency windows so GitHub renders every underscore and formula cleanly.
+- **Overclaims Removed (`README.md`, `SUBMISSION.md`)**: Removed `"exact volumetric delta table"`, `"sub-pixel"`, `"exact"` precision claims, `"100%"` claims, and unsourced `"can take days"` wording; replaced with hedged wording (`"can be slow and manual"`) and `"relative area change between BEFORE and AFTER"`.
+- **Heuristic Disclosure (`README.md`)**: Explicitly documented that severity coefficients, concept weights, score cutoffs, and urgency windows (`7` / `14` / `30` days / `immediate`) are configurable project heuristics, not engineering standards.
+- **Architecture Diagram (`README.md`)**: Updated the Mermaid `flowchart TD` (`photo -> preprocess/privacy blur -> Muse Spark scene -> SAM 3.1 -> filtering/NMS -> deterministic scoring -> Muse Spark report -> map/report`) and verified clean SVG compilation (`MERMAID_SYNTAX_OK`).
+- **Validation Status & Development Transparency (`README.md`)**: Added explicit sections disclosing live real-photo validation on Road Damage, synthetic/edited-pair-only validation so far on Construction Progress (`Results on author's own photos: to be added`), synthetic `apps/web/public/samples/` images, and hackathon development with Antigravity directed and reviewed by the author while Meta SAM 3.1 and Muse Spark power the application at runtime.

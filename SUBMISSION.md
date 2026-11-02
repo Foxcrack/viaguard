@@ -10,9 +10,9 @@
 
 ## 1. Project Description (150 Words)
 
-Municipal public works agencies struggle with slow, manual infrastructure inspections. Citizens report potholes, roadbed deterioration, and construction delays, but converting smartphone photos into prioritized repair orders takes days.
+Municipal public works agencies often deal with manual infrastructure inspections. Citizens report potholes, roadbed deterioration, and construction issues, and converting smartphone photos into prioritized repair notes can be slow and manual.
 
-**Viaguard** is an intelligent civic infrastructure inspection platform powered directly by Meta's AI models. Using **SAM 3.1**, Viaguard performs sub-pixel 1-bit streaming segmentation, calculating relative frame area percentages and crisp vector boundaries of potholes, cracks, and structural site elements. Using **Muse Spark**, Viaguard provides structured engineering scene reasoning, comparative construction progression analysis, and municipal work-order narratives.
+**Viaguard** is a civic infrastructure inspection tool powered directly by Meta's AI models. Using **SAM 3.1**, Viaguard performs 1-bit streaming segmentation, calculating relative frame area percentages and vector boundaries of potholes, cracks, and structural site elements. Using **Muse Spark**, Viaguard provides structured scene reasoning, comparative construction progression analysis, and municipal work-order narratives.
 
 With automatic EXIF GPS geolocation, an interactive OpenStreetMap civic dashboard, an area-dominant deterministic severity engine (0–100) clearly separated from overall visual condition, default-on pedestrian and license-plate privacy blurring, and printable HTML/PDF reports, Viaguard turns smartphone street and site photos into transparent, actionable municipal inspection reports.
 
@@ -40,7 +40,7 @@ Viaguard depends strictly on Meta's models through the official Meta Model API (
 - Invoked via the Responses API with `stream: true`.
 - Evaluates sanitized 1-to-2-word plain-noun concept prompts (e.g., `"pothole"`, `"crack"`, `"concrete wall"`, `"scaffolding"`, plus `"person"` and `"license plate"` for privacy protection).
 - Employs 1-bit mask encoding (`metadata: { mask_encoding: "one_bit", include_confidence: "true" }`) for compact streaming payloads.
-- Stream chunks are parsed with `@meta-sam/parser`, decoded into row-major binary rasters for exact relative frame area percentages and pixel-mask NMS deduplication, and converted to vector SVG paths for interactive client overlays.
+- Stream chunks are parsed with `@meta-sam/parser`, decoded into row-major binary rasters for relative frame area percentages and pixel-mask NMS deduplication, and converted to vector SVG paths for interactive client overlays.
 
 ### `muse-spark-1.3` (Reasoning & Vision Model)
 - **Scene Understanding**: Inspects uploaded images via strict Responses API `json_schema` output to classify scene type, assess `overall_condition` (`good` / `fair` / `poor` / `critical`), and suggest plain-noun target concepts for SAM 3.1.
@@ -67,7 +67,7 @@ Viaguard depends strictly on Meta's models through the official Meta Model API (
 
 ### [2:05 – 2:50] Construction Progress: Before & After Comparative Audit
 - **Visual:** Switch to **Construction Progress**. Upload two real phone photos of the same spot (`BEFORE` and `AFTER` a visible change—such as a wall, scaffolding, or repair work) and click **Run Progression Analysis**. Scrub the interactive `BeforeAfterSlider` with SAM 3.1 overlays enabled, then show the `Progress Index`, the element-by-element quantitative delta table (`Before Area`, `After Area`, `Delta`, `Status`), `DualSignalCards`, and Muse Spark’s comparative engineering summary.
-- **Voiceover:** *"The exact same core pipeline also powers Before-and-After construction and repair verification. Uploading baseline and current photos segments structural and hazard concepts across both states. Inspectors can scrub the interactive comparison slider, inspect exact relative frame-area deltas in the table, and read Muse Spark’s comparative audit."*
+- **Voiceover:** *"The same core pipeline also powers Before-and-After construction and repair comparison. Uploading baseline and current photos segments structural and hazard concepts across both states. Inspectors can scrub the interactive comparison slider, inspect the relative area change between BEFORE and AFTER in the table, and read Muse Spark’s comparative summary."*
 
 ### [2:50 – 3:00] Closing
 - **Visual:** Return to the Civic Map and Reports archive, showing the public GitHub repository (`https://github.com/Foxcrack/viaguard`) and MIT license.
