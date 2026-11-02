@@ -1,12 +1,13 @@
 # Viaguard Sample Images
 
-This directory stores road damage and construction progress inspection photos.
+This directory stores road damage and construction progress sample input images.
+
+> **Honesty & Attribution Note**: The four bundled `.jpg` files in this folder (`road-sample-pothole.jpg`, `road-sample-cracks.jpg`, `construction-before-site.jpg`, and `construction-after-site.jpg`) are **programmatically generated synthetic test illustrations** created with `sharp` SVG compositing (`apps/api/src/generate-samples.ts`), as documented in [`THIRD_PARTY.md`](../../../../THIRD_PARTY.md). They are sample *input* images only — **no pre-cached API responses are bundled in this repository**.
 
 ## Instructions
-Place test images here in `.jpg`, `.jpeg`, `.png`, or `.webp` format.
+You can upload your own real smartphone photos directly in the web UI, or place `.jpg`, `.jpeg`, `.png`, or `.webp` test images here:
 
-- **Road Damage**: Clear photos of asphalt streets showing potholes, longitudinal or alligator cracks, curb damage, or manhole covers. Photos taken from a mobile phone with EXIF GPS coordinates enabled will automatically populate the geolocation map.
-- **Construction Progress**: Pairs of photos of the same site (e.g. `construction-before.jpg` and `construction-after.jpg`) showing progression (such as newly erected scaffolding, poured concrete, rebar installation) or deterioration.
+- **Road Damage**: Photos of asphalt or concrete streets showing potholes, longitudinal or alligator cracks, patches, or manhole covers. Photos taken on a smartphone with camera EXIF GPS coordinates enabled will automatically populate the geolocation map.
+- **Construction Progress**: Pairs of BEFORE and AFTER photos of the same spot (e.g., a wall, scaffolding, street repair, or job site near you with a visible physical change between shots).
 
-Any photos placed in this directory will be indexed by the `/api/demo/samples` endpoint and made accessible in the UI sample picker.
-
+Any image files placed in this directory are indexed by `/api/demo/samples` and selectable from the UI sample picker.

@@ -3,49 +3,49 @@
 **Meta Global AI Developer Hackathon 2026**  
 **Track:** Indie Developer  
 **Theme:** Build for Your World  
-**Repository:** https://github.com/TWFoxcrack/viaguard  
+**Repository:** https://github.com/Foxcrack/viaguard  
 **License:** MIT  
 
 ---
 
 ## 1. Project Description (150 Words)
 
-Municipal public works agencies struggle with slow, manual infrastructure inspections. Citizens report potholes, roadbed deterioration, and construction delays, but converting smartphone photos into prioritized repair orders takes days. 
+Municipal public works agencies struggle with slow, manual infrastructure inspections. Citizens report potholes, roadbed deterioration, and construction delays, but converting smartphone photos into prioritized repair orders takes days.
 
-**Viaguard** is an intelligent civic infrastructure inspection platform powered directly by Meta's AI models. Using **SAM 3.1**, Viaguard performs sub-pixel 1-bit streaming segmentation, calculating exact relative surface area percentages and vector boundaries of potholes, alligator cracks, and structural elements. Using **Muse Spark**, Viaguard provides deep engineering scene reasoning, comparative construction progression diffing, and automated report generation. 
+**Viaguard** is an intelligent civic infrastructure inspection platform powered directly by Meta's AI models. Using **SAM 3.1**, Viaguard performs sub-pixel 1-bit streaming segmentation, calculating relative frame area percentages and crisp vector boundaries of potholes, cracks, and structural site elements. Using **Muse Spark**, Viaguard provides structured engineering scene reasoning, comparative construction progression analysis, and municipal work-order narratives.
 
-With automatic EXIF GPS geolocation, an interactive municipal map, a deterministic severity scoring engine (0–100), automated privacy protection blurring, and printable work orders, Viaguard transforms any phone photo into an immediate, actionable municipal asset. Viaguard empowers cities to fix hazardous roads faster, verify contractor milestones objectively, and protect public safety.
+With automatic EXIF GPS geolocation, an interactive OpenStreetMap civic dashboard, an area-dominant deterministic severity engine (0–100) clearly separated from overall visual condition, default-on pedestrian and license-plate privacy blurring, and printable HTML/PDF reports, Viaguard turns smartphone street and site photos into transparent, actionable municipal inspection reports.
 
 ---
 
 ## 2. What Was Built During the Hackathon
 
 Every line of code, architecture diagram, and test in this repository was built from scratch between **October 27, 2026, and November 4, 2026**:
-- **Monorepo Architecture**: Clean pnpm workspace dividing `@viaguard/core`, `@viaguard/api`, and `@viaguard/web`.
-- **Meta Model API Client**: Native OpenAI SDK integration with Meta's endpoint (`https://api.meta.ai/v1`), disk caching, token tracking, and exponential backoff retry.
-- **Official SAM Parser**: Deep integration of `@meta-sam/parser` (`parseImageStream`, `decodeMaskToRaster`, and `decodeMaskToSVGPath`) for real-time streaming segmentation and raster area computation.
-- **Deterministic Severity Engine**: Mathematically verified formula in `packages/core` calculating objective hazard levels without hallucinated metrics.
-- **Geospatial Mapping**: Full OpenStreetMap / Leaflet integration with severity-coded pins and auto-populated EXIF GPS coordinates.
-- **Comparative Construction Diffing**: Quantitative element delta tracker comparing BEFORE/AFTER site photos with an interactive draggable comparison slider.
-- **Civic Privacy Protection**: Automated segmentation and 25px Gaussian blurring of pedestrians and vehicle license plates.
-- **Testing**: 21 automated Vitest unit and integration tests covering scoring, diffing, schemas, API routes, and privacy filters.
+- **Monorepo Architecture**: Clean `pnpm` workspace dividing `@viaguard/core`, `@viaguard/api`, and `@viaguard/web`.
+- **Meta Model API Client**: Native OpenAI SDK Responses API integration with Meta's endpoint (`https://api.meta.ai/v1`), strict `json_schema` structured output (`text.format`), token usage tracking, and exponential backoff retry.
+- **Official SAM Parser & Post-Processing**: Deep integration of `@meta-sam/parser` (`parseImageStream`, `decodeMaskToRaster`, and `decodeMaskToSVGPath`) paired with plain-noun concept sanitizing, per-concept confidence thresholds, minimum mask area filtering (`MIN_AREA_RATIO = 0.15%`), and cross-concept pixel-mask Non-Maximum Suppression (`IoU > 0.5`).
+- **Separated Signals & Deterministic Severity Engine**: Area- and largest-defect-dominant formula (`packages/core/src/scoring.ts`) exposing full score breakdowns, paired with neutral report titles, deterministic repair urgency mapping (`within 30 days` / `within 14 days` / `within 7 days` / `immediate`), and explicit separation between **`Measured severity (SAM)`** and **`Visual condition (Muse Spark)`**.
+- **Geospatial Mapping**: OpenStreetMap / Leaflet integration with severity-coded pins and auto-populated camera EXIF GPS coordinates (plus browser/manual pin support).
+- **Comparative Construction Diffing**: Quantitative element delta tracker comparing BEFORE and AFTER site photos with an interactive draggable `BeforeAfterSlider` and `Progress Index`.
+- **Default-On Civic Privacy Protection**: Automated SAM 3.1 segmentation (`"person"`, `"license plate"`) and 2-stage pixel mosaic + Gaussian blurring enabled ON by default (`Privacy blur: on`) directly on stored uploads.
+- **Testing**: 41 automated Vitest unit and integration tests (`28` in `@viaguard/core` + `13` in `@viaguard/api`) covering filtering, NMS, scoring breakdowns, signal separation, urgency mapping, construction diffing, Zod schemas, API routes, opt-in Demo Mode honesty, and privacy blur.
 
 ---
 
 ## 3. How Meta's Models Are Used
 
-Viaguard depends strictly on Meta's models through the official Meta Model API:
+Viaguard depends strictly on Meta's models through the official Meta Model API (`https://api.meta.ai/v1`):
 
 ### `sam-3.1` (Segmentation Model)
 - Invoked via the Responses API with `stream: true`.
-- Evaluates individual short noun phrase concept prompts (e.g., `"pothole"`, `"crack"`, `"concrete wall"`, `"scaffolding"`).
-- Employs 1-bit mask encoding (`metadata: { mask_encoding: "one_bit", include_confidence: "true" }`) for ultra-compact payloads.
-- Stream chunks are parsed in real time using `@meta-sam/parser`. Decoded into row-major binary rasters to calculate exact relative surface area percentages and converted to vector SVG paths for client-side overlays.
+- Evaluates sanitized 1-to-2-word plain-noun concept prompts (e.g., `"pothole"`, `"crack"`, `"concrete wall"`, `"scaffolding"`, plus `"person"` and `"license plate"` for privacy protection).
+- Employs 1-bit mask encoding (`metadata: { mask_encoding: "one_bit", include_confidence: "true" }`) for compact streaming payloads.
+- Stream chunks are parsed with `@meta-sam/parser`, decoded into row-major binary rasters for exact relative frame area percentages and pixel-mask NMS deduplication, and converted to vector SVG paths for interactive client overlays.
 
 ### `muse-spark-1.3` (Reasoning & Vision Model)
-- **Scene Understanding**: Inspects raw uploaded images with strict structured JSON output to classify road/site conditions and suggest dynamic concept prompts for SAM.
-- **Construction Diff Reasoning**: Compares BEFORE and AFTER physical measurements, evaluating genuine structural progress versus safety hazards or debris accumulation.
-- **Municipal Report Authoring**: Synthesizes measurements into official municipal repair directives, cold-patching recommendations, and urgency tiers.
+- **Scene Understanding**: Inspects uploaded images via strict Responses API `json_schema` output to classify scene type, assess `overall_condition` (`good` / `fair` / `poor` / `critical`), and suggest plain-noun target concepts for SAM 3.1.
+- **Construction Diff Reasoning**: Interprets BEFORE and AFTER element count and area deltas alongside the `AFTER` site image to distinguish structural progression from debris or crack accumulation.
+- **Municipal Report Authoring**: Receives the filtered SAM measurements and the code-determined urgency timeframe as fixed inputs, authoring concise repair directives and a single-sentence visual condition explanation without inventing titles or urgency windows.
 
 ---
 
@@ -53,35 +53,34 @@ Viaguard depends strictly on Meta's models through the official Meta Model API:
 
 **Target Video Length:** 3:00 (180 seconds)
 
-### [0:00 – 0:20] The Problem: Municipal Backlog & Road Hazards
-- **Visual:** Opening on a real road photo with a deep pothole. Cut to headline animation in Viaguard.
-- **Voiceover:** *"Every day, municipal public works departments receive hundreds of citizen reports about road damage. But manual inspections are slow, subjective, and difficult to prioritize. How can city engineers turn a simple phone photo into an immediate, measured work order? Meet Viaguard."*
+### [0:00 – 0:20] The Problem: Slow & Subjective Street Inspections
+- **Visual:** Open on a real smartphone photo of a damaged street with a deep pothole, pedestrians, and parked cars, then cut to the Viaguard home dashboard.
+- **Voiceover:** *"Every day, city public works teams receive street photos from inspectors and citizens—but turning raw photos into measured, prioritized work orders is slow and inconsistent. Viaguard turns any phone photo of a street or job site into a transparent inspection report powered by Meta Muse Spark and SAM 3.1."*
 
-### [0:20 – 1:15] Road Damage Inspection & Meta AI Pipeline
-- **Visual:** Inspector uploads a photo of a damaged street. EXIF GPS badge automatically lights up with coordinates. Inspector clicks "Run Inspection Audit". Live progress stepper animates through pipeline stages.
-- **Voiceover:** *"Viaguard takes any smartphone photo. It instantly reads camera EXIF GPS tags to pin the exact location. Next, Meta’s Muse Spark model performs scene reasoning, identifying asphalt breakdown and selecting targeted concepts. Then, Meta’s SAM 3.1 model performs 1-bit streaming segmentation."*
+### [0:20 – 1:15] Live Road Damage Pipeline & Default-On Privacy Blur
+- **Visual:** Open **Road Damage**, upload a real street photo (showing EXIF GPS coordinates if present, or setting location pin). Keep `Privacy blur` enabled (default ON) and click **Run Road Inspection** in **Live API** mode. Show the 4-stage live progress stepper (`Preprocess & EXIF` → `Muse Spark Scene` → `SAM 3.1 Masks` → `Municipal Report`).
+- **Voiceover:** *"In Live API mode, Viaguard reads EXIF GPS coordinates, then sends the frame to Meta’s Muse Spark for structured scene understanding and plain-noun concept selection. Next, SAM 3.1 streams 1-bit segmentation masks decoded with `@meta-sam/parser`. Notice that pedestrians and vehicle license plates are automatically blurred on the stored photo (`Privacy blur: on`) before the report is saved."*
 
-### [1:15 – 2:05] Interactive Mask Overlays, Scoring & Civic Map
-- **Visual:** The photo renders with bright vector mask overlays over the pothole. The inspector hovers over findings, toggling SAM masks and bounding boxes. Severity score displays 78/100 (HIGH). Cut to the Civic Map showing color-coded pins across the city. Click "Export PDF Report" to reveal the official work order.
-- **Voiceover:** *"Using the official @meta-sam/parser, Viaguard decodes the raster masks to measure exact relative damage coverage—here, a 6.8% sensor void. Our deterministic scoring formula assigns an objective hazard rating of 78 out of 100. The damage is pinned to our live municipal map, and with one click, public works has a complete, printable work order with cold-patching specifications."*
+### [1:15 – 2:05] Decluttered Masks, Separated Signals & Printable Work Order
+- **Visual:** Show the inspected street photo with clean numbered badges (`1, 2...`) matching the `Detected Findings` list on the right. Hover over `#1 pothole` to reveal its callout (`area% · conf%`) and toggle `Boxes`. Scroll to the two separated signal cards—**`Measured severity (SAM)`** (with its full `Severity Score Breakdown`: total area, largest defect, capped count bonus) beside **`Visual condition (Muse Spark)`** (showing the discrepancy note when diffuse wear differs from discrete defects) and the neutral report header (`Road inspection report — YYYY-MM-DD`) with deterministic urgency (`within 7 days` / `within 30 days`). Briefly show the pin on **Civic Map** and click **Print / Export PDF** to display the clean printable work order.
+- **Voiceover:** *"Post-processing filters out tiny noise and deduplicates overlapping masks via pixel-level NMS. Viaguard never mixes signals: SAM’s deterministic area-based severity score and full mathematical breakdown sit side-by-side with Muse Spark’s visual condition assessment, a neutral report title, and a fixed policy repair window. Every geolocated inspection appears on the Civic Map and exports cleanly as a printable municipal work order."*
 
-### [2:05 – 2:50] Construction Progress: Before & After Comparative Diff
-- **Visual:** Navigate to Construction module. Load BEFORE (excavation) and AFTER (concrete wall & scaffolding) photos. Click "Run Construction Progression Diff". Draggable comparison slider scrubs between baseline and current state. The quantitative delta table displays concrete wall (+20% area) and scaffolding (+12% area), yielding a +65 Progress Index.
-- **Voiceover:** *"Viaguard's core pipeline also powers comparative construction monitoring. We upload a BEFORE baseline and an AFTER photo. Viaguard segments matching structural elements across both epochs. Our interactive comparison slider lets project managers inspect changes visually, while our quantitative diff engine calculates exact element delta percentages. Muse Spark then audits structural progress, verifying that foundation walls were poured on schedule while alerting on debris."*
+### [2:05 – 2:50] Construction Progress: Before & After Comparative Audit
+- **Visual:** Switch to **Construction Progress**. Upload two real phone photos of the same spot (`BEFORE` and `AFTER` a visible change—such as a wall, scaffolding, or repair work) and click **Run Progression Analysis**. Scrub the interactive `BeforeAfterSlider` with SAM 3.1 overlays enabled, then show the `Progress Index`, the element-by-element quantitative delta table (`Before Area`, `After Area`, `Delta`, `Status`), `DualSignalCards`, and Muse Spark’s comparative engineering summary.
+- **Voiceover:** *"The exact same core pipeline also powers Before-and-After construction and repair verification. Uploading baseline and current photos segments structural and hazard concepts across both states. Inspectors can scrub the interactive comparison slider, inspect exact relative frame-area deltas in the table, and read Muse Spark’s comparative audit."*
 
-### [2:50 – 3:00] Closing & Civic Impact
-- **Visual:** Full view of the Civic Map. Show GitHub repository and MIT license badge.
-- **Voiceover:** *"Built entirely with Meta SAM 3.1 and Muse Spark, Viaguard turns everyday phone photos into actionable civic intelligence. Safer roads, verified job sites, and smarter cities. Thank you!"*
+### [2:50 – 3:00] Closing
+- **Visual:** Return to the Civic Map and Reports archive, showing the public GitHub repository (`https://github.com/Foxcrack/viaguard`) and MIT license.
+- **Voiceover:** *"Built from scratch with Meta SAM 3.1 and Muse Spark: honest measurements, privacy by default, and faster civic maintenance. This is Viaguard."*
 
 ---
 
 ## 5. Pre-Submission Checklist
 
-- [x] **Public Repository**: Repository is public and licensed under MIT (`https://github.com/TWFoxcrack/viaguard`).
+- [x] **Public Repository**: Repository is public and licensed under MIT (`https://github.com/Foxcrack/viaguard`).
 - [x] **Git History Proof**: Commit history proves all development took place between Oct 27 and Nov 4, 2026.
-- [x] **No Secrets Committed**: `.env` is strictly gitignored; `.env.example` provides empty placeholders.
-- [x] **Meta Models Verified**: Strictly powered by `sam-3.1` and `muse-spark-1.3` via the Meta Model API.
-- [x] **Opt-In Honest Demo Mode**: Demo Mode never activates silently; it only runs when explicitly turned on by the user, displays a visible `"Replaying cached real responses"` banner, and replays exclusively real Meta Model API responses recorded via `pnpm record:demo`.
-- [x] **Tests Passing**: Automated unit and integration tests passing (`pnpm test`).
+- [x] **No Secrets Committed**: `.env` is strictly gitignored; full `git log -p` history verified clean.
+- [x] **Meta Models Verified**: Strictly powered by `sam-3.1` and `muse-spark-1.3` via `https://api.meta.ai/v1`.
+- [x] **Honest Live Mode & No Bundled Fake Cache**: Zero pre-cached responses are shipped in the repo (`data/` is gitignored). Live API mode runs by default and never falls back silently; opt-in Demo Mode only replays responses locally recorded by the user via `pnpm record:demo` with a visible `"Replaying cached real responses"` banner.
+- [x] **Tests Passing**: 41 automated unit and integration tests passing (`pnpm test`).
 - [x] **Submission Portal**: Official submission via https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit before November 4, 2026, 9:00 PM ET.
-

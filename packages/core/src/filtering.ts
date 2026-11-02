@@ -106,6 +106,8 @@ const ALLOWED_ING_NOUNS = new Set([
   "railing",
   "cladding",
   "grating",
+  "flooring",
+  "ceiling",
 ]);
 
 /** Legitimate plain nouns ending in -ed that are not past-participle adjectives. */

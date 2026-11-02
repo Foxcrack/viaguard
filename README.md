@@ -36,7 +36,7 @@ Viaguard depends strictly on Meta's models through the **Meta Model API** (`http
 | **`sam-3.1`** | **Sub-Pixel Object Segmentation** | Called through the Responses API with `stream: true`. Receives one short noun phrase concept (e.g. `"pothole"`, `"crack"`, `"scaffolding"`). Requests 1-bit mask encoding (`metadata: { mask_encoding: "one_bit", include_confidence: "true" }`). Decoded with official `@meta-sam/parser` (`parseImageStream`, `recordsOfKind`, `decodeMaskToRaster`, and `decodeMaskToSVGPath`) to calculate exact active raster pixel area percentages and crisp vector SVG overlay paths. |
 | **`muse-spark-1.3`** | **Scene Understanding & Reasoning** | Receives the street image with strict Responses API structured JSON schema (`text: { format: { type: "json_schema", strict: true } }`) to identify road surface type, structural condition, and suggest target SAM concept prompts. |
 | **`muse-spark-1.3`** | **Comparative Construction Diffing** | Compares BEFORE and AFTER site measurements, distinguishing physical structural progression from deterioration and safety risks. |
-| **`muse-spark-1.3`** | **Municipal Report Authoring** | Synthesizes measured relative surface areas, confidence scores, and damage counts into actionable civic repair recommendations (cold patching, milling, crack sealing) and urgency tiers. |
+| **`muse-spark-1.3`** | **Municipal Report Authoring** | Synthesizes measured relative surface areas, confidence scores, damage counts, and the code-derived deterministic urgency window into actionable civic repair narratives (cold patching, milling, crack sealing) plus a single-sentence visual condition explanation. |
 
 ---
 
@@ -123,7 +123,7 @@ $$\text{Score} = \text{clamp}\!\Big(\text{round}\big(S_{\text{total}} + S_{\text
   - `crack`: `1.0` (water intrusion & freeze/thaw propagation)
   - `patch`: `0.7` (repaired surface wear)
   - `puddle`: `0.6` (standing drainage water)
-  - `manhole cover`: `0` (neutral municipal utility fixture; excluded from damage scoring)
+  - `manhole cover`, `concrete wall`, `scaffolding`, `excavator` (and related neutral utility/structural progress elements): `0` (excluded from hazard damage scoring; tracked separately in construction progression diffs)
 - **Severity Level Bands & Deterministic Urgency Mapping (`SEVERITY_URGENCY_MAP` in `packages/core/src/report-signals.ts`)**:
   Target repair urgency is derived **strictly in code** from `severityLevel` via `getUrgencyForSeverity(level)` and passed as a fixed policy input to Muse Spark (which writes the narrative around it and never invents its own timeframe):
   - `low` (`0 – 24`): **`within 30 days`**
@@ -160,15 +160,20 @@ Municipal street photos frequently capture pedestrians and vehicle license plate
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/TWFoxcrack/viaguard.git
+git clone https://github.com/Foxcrack/viaguard.git
 cd viaguard
 pnpm install
 ```
+*(Running `pnpm install` automatically compiles the shared `@viaguard/core` workspace package via `postinstall`.)*
 
 ### 2. Configure Environment Variables
 Copy `.env.example` to `.env`:
 ```bash
+# macOS / Linux / Git Bash
 cp .env.example .env
+
+# Windows PowerShell
+Copy-Item .env.example .env
 ```
 Open `.env` and provide your Meta Model API key:
 ```env
@@ -202,22 +207,25 @@ Runs 41 Vitest tests validating concept sanitizing, confidence filtering, minimu
 
 ### 6. Run Headless CLI Inspection
 ```bash
+# Single-photo Road Damage inspection
 pnpm analyze:sample apps/web/public/samples/road-sample-pothole.jpg
+
+# Before & After Construction Progress comparative inspection
+pnpm analyze:sample apps/web/public/samples/construction-before-site.jpg apps/web/public/samples/construction-after-site.jpg
 ```
 
 ---
 
-## 🛡️ Opt-In Demo Mode (Verified Real Cache Replay)
+## 🛡️ Opt-In Demo Mode (Local Replay Only — No Pre-Cached Responses Bundled)
 
-Demo Mode is strictly **opt-in** and never activates silently when `MODEL_API_KEY` is missing or when a live API request fails:
+**No pre-cached API responses are included in this repository** (`data/` is gitignored), and Demo Mode **never** activates silently when `MODEL_API_KEY` is missing or when a live API request fails:
 - **Default Mode (Live API)**: Every inspection calls `muse-spark-1.3` and `sam-3.1` live via `https://api.meta.ai/v1`. If `MODEL_API_KEY` is unset or an API error occurs, Viaguard surfaces a clear diagnostic error instead of switching modes.
-- **Recording Real Demo Responses**: Once `MODEL_API_KEY` is configured in `.env`, record real Meta Model API responses into `data/cache/` with:
+- **Recording Local Demo Responses (Optional)**: Once `MODEL_API_KEY` is configured in `.env`, you can optionally record real Meta Model API responses into your local `data/cache/` directory with:
   ```bash
-  pnpm record:demo apps/web/public/samples/road-sample-pothole.jpg
-  pnpm record:demo apps/web/public/samples/road-sample-cracks.jpg
-  pnpm record:demo apps/web/public/samples/construction-before-site.jpg apps/web/public/samples/construction-after-site.jpg
+  pnpm record:demo <road-image-path>
+  pnpm record:demo <before-image-path> <after-image-path>
   ```
-- **Replaying Cached Real Responses**: Only when a user explicitly enables Demo Mode (via the UI switch or `DEMO_MODE=true`), Viaguard replays verified real API responses from `data/cache/` and displays a persistent **"Replaying cached real responses"** banner.
+- **Replaying Locally Recorded Responses**: Only when you explicitly enable Demo Mode (via the UI switch or `DEMO_MODE=true`) after recording with `pnpm record:demo`, Viaguard replays those locally recorded responses from `data/cache/` and displays a persistent **"Replaying cached real responses"** banner. If no local cache exists for that image, Demo Mode returns an explicit error instructing you to record it first or switch back to Live API mode.
 
 ---
 

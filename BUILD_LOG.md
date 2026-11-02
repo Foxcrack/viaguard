@@ -595,3 +595,24 @@ Total Findings:                6
 Summary:
   "Measured segmented defect severity is low at 24/100 from six discrete potholes totaling approximately 2.91% frame area on an asphalt road, while overall visual condition is separately rated poor due to multiple large potholes and crumbling pavement edge; per policy the assigned repair urgency is within 30 days."
 ```
+
+
+---
+
+## 2026-11-01 – Pre-Submission Verification Audit & Clean-Clone Rectifications
+
+### 1. Issues Identified & Fixed During Pre-Submission Audit
+1. **Fresh-Clone Workspace Build (`package.json`)**:
+   - Because `dist/` is gitignored, a fresh `git clone` followed immediately by `pnpm install && pnpm dev` previously lacked `packages/core/dist/index.js`.
+   - Added `"postinstall": "pnpm --filter @viaguard/core build"` to root `package.json` and prepended `pnpm --filter @viaguard/core build &&` to `dev`, `test`, `typecheck`, `lint`, `check:meta`, `analyze:sample`, and `record:demo`.
+2. **GitHub Repository URL Fix (`README.md`, `SUBMISSION.md`)**:
+   - Corrected repository clone/submission URLs from `https://github.com/TWFoxcrack/viaguard` to the actual public remote `https://github.com/Foxcrack/viaguard` (`.git`), and added Windows PowerShell (`Copy-Item .env.example .env`) alongside `cp .env.example .env`.
+3. **Documentation & Video Script Honesty Audit (`README.md`, `SUBMISSION.md`, `THIRD_PARTY.md`, `apps/web/public/samples/README.md`)**:
+   - Verified zero mentions of Devpost (official portal: `https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit`).
+   - Explicitly documented in `README.md`, `SUBMISSION.md`, and `apps/web/public/samples/README.md` that **no pre-cached API responses are bundled in this repository** (`data/` is gitignored) and that the 4 `.jpg` files in `apps/web/public/samples/` are synthetic test input illustrations (`THIRD_PARTY.md` includes both this disclosure and the full React Bits `MIT + Commons Clause` license).
+   - Updated `SUBMISSION.md` test count (`41` Vitest tests), privacy blur description (default ON, 2-stage mosaic + Gaussian blur), deterministic urgency explanation, and the 3-minute demo video script to match the exact live behavior (neutral report titles, separated `Measured severity (SAM)` vs `Visual condition (Muse Spark)`, numbered non-overlapping badges, default-on privacy blur, and comparative Before/After construction diffing).
+4. **Construction Progress Live Verification (`packages/core/src/scoring.ts`, `packages/core/src/diff.ts`, `apps/api/src/cli-sample.ts`)**:
+   - Assigned weight `0` in `CONCEPT_WEIGHTS` to neutral structural/site elements (`scaffolding`, `concrete wall`, `wall panel`, `pit wall`, `excavator`, etc.) so newly erected structural elements register as positive `PROGRESS` in `compareConstructionSites` without inflating hazard damage severity.
+   - Extended `pnpm analyze:sample <before> <after>` to run `runConstructionPipeline` directly from CLI and verified two live runs against Meta Model API (`muse-spark-1.3` + `sam-3.1`):
+     - Synthetic pair (`construction-before-site.jpg` &rarr; `construction-after-site.jpg`, `rep-const-1793590855439-1c2a4aa3`): `scaffolding` `0 -> 1` (`+3.94%` area, `PROGRESS`), `Progress Index: +18`, `Measured severity (SAM): 0/100 [LOW]`, `Visual condition (Muse Spark): GOOD`, `Urgency: within 30 days`.
+     - Real street repair pair (`real-street-photo.jpg` &rarr; `real-street-after-patched.jpg`, `rep-const-1793591010054-7d511a3c`): `pothole` `1 -> 0` (`6.72% -> 0%`, `PROGRESS`), `Progress Index: +23`, `Privacy Blur: on (10 regions blurred)`, `Measured severity (SAM): 0/100 [LOW]`, `Visual condition (Muse Spark): FAIR`, `Urgency: within 30 days`.

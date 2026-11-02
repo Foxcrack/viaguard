@@ -4,7 +4,7 @@ loadEnv();
 import * as fs from "fs";
 import * as path from "path";
 import sharp from "sharp";
-import { runRoadPipeline } from "./pipeline.js";
+import { runRoadPipeline, runConstructionPipeline } from "./pipeline.js";
 
 async function getOrGenerateSampleBuffer(imageArg?: string): Promise<{ buffer: Buffer; name: string }> {
   if (imageArg) {
@@ -66,12 +66,85 @@ async function getOrGenerateSampleBuffer(imageArg?: string): Promise<{ buffer: B
 }
 
 async function main() {
-  const imageArg = process.argv.slice(2).find((arg) => !arg.startsWith("-"));
+  const args = process.argv.slice(2).filter((arg) => !arg.startsWith("-"));
+  const imageArg = args[0];
+  const afterArg = args[1];
   console.log("==================================================");
   console.log("      Viaguard Pipeline CLI Sample Runner        ");
   console.log("==================================================");
 
   try {
+    if (imageArg && afterArg) {
+      const beforeInput = await getOrGenerateSampleBuffer(imageArg);
+      const afterInput = await getOrGenerateSampleBuffer(afterArg);
+      console.log(
+        `Processing construction pair: ${beforeInput.name} (${beforeInput.buffer.length} B) -> ${afterInput.name} (${afterInput.buffer.length} B)...`
+      );
+      const report = await runConstructionPipeline({
+        beforeBuffer: beforeInput.buffer,
+        afterBuffer: afterInput.buffer,
+        beforeName: beforeInput.name,
+        afterName: afterInput.name,
+        onProgress: (step, percent) => {
+          console.log(`  [${percent.toString().padStart(3)}%] ${step}`);
+        },
+      });
+
+      console.log("\n==================================================");
+      console.log("      CONSTRUCTION DIFF REPORT GENERATED          ");
+      console.log("==================================================");
+      console.log(`Report ID:                     ${report.id}`);
+      console.log(`Timestamp:                     ${report.createdAt}`);
+      console.log(`Title:                         ${report.title}`);
+      console.log(
+        `Progress Index:                ${
+          (report.constructionDiff?.progressScore ?? 0) >= 0 ? "+" : ""
+        }${report.constructionDiff?.progressScore ?? 0}`
+      );
+      console.log(
+        `Measured severity (SAM):       ${report.measuredSeverity?.score ?? report.severityScore}/100 [${(
+          report.measuredSeverity?.level ?? report.severityLevel
+        ).toUpperCase()}]`
+      );
+      console.log(
+        `Visual condition (Muse Spark): ${(
+          report.visualCondition?.level ?? report.overallCondition
+        ).toUpperCase()} — ${report.visualCondition?.explanation ?? ""}`
+      );
+      if (report.signalDiscrepancyNote) {
+        console.log(`Signal Discrepancy Note:       ${report.signalDiscrepancyNote}`);
+      }
+      console.log(`Scene Type:                    ${report.sceneType}`);
+      console.log(`Urgency (deterministic):       ${report.estimatedUrgency}`);
+      console.log(`Action Required:               ${report.recommendedAction}`);
+      console.log(
+        `Privacy Blur:                  ${report.privacyBlurApplied ? "on" : "off"} (${report.privacyRegionsBlurred} regions blurred)`
+      );
+      console.log(`Cached:                        ${report.isCached ? "YES" : "NO"}`);
+      console.log(
+        `Before Findings:               ${report.findings.length} | After Findings: ${report.afterFindings?.length ?? 0}`
+      );
+      if (report.constructionDiff) {
+        console.log(`Overall Diff Assessment:       ${report.constructionDiff.overallAssessment}`);
+        for (const c of report.constructionDiff.conceptChanges) {
+          console.log(
+            `  - ${c.concept.padEnd(18)}: count ${c.beforeCount} -> ${c.afterCount} (${
+              c.deltaCount >= 0 ? "+" : ""
+            }${c.deltaCount}) | area ${c.beforeAreaPercent}% -> ${c.afterAreaPercent}% (${
+              c.deltaAreaPercent >= 0 ? "+" : ""
+            }${c.deltaAreaPercent}%) [${c.status.toUpperCase()}]`
+          );
+        }
+      }
+      if (report.limitations) {
+        console.log(`  ${report.limitations}`);
+      }
+      console.log("Summary:");
+      console.log(`  "${report.summary}"`);
+      console.log("==================================================");
+      process.exit(0);
+    }
+
     const { buffer, name } = await getOrGenerateSampleBuffer(imageArg);
     console.log(`Processing inspection photo: ${name} (${buffer.length} bytes)...`);
 

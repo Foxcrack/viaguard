@@ -46,13 +46,27 @@ describe("calculateSeverity (area + largest-instance dominant formula)", () => {
     });
   });
 
-  it("ignores neutral manhole covers (weight 0) in damage severity calculation", () => {
+  it("ignores neutral manhole covers and positive construction elements (weight 0) in hazard severity calculation", () => {
     const findings: DamageFinding[] = [
       {
         id: "manhole-1",
         concept: "manhole cover",
         confidence: 0.95,
         relativeAreaPercent: 3.5,
+        boundingBox: dummyBox,
+      },
+      {
+        id: "wall-1",
+        concept: "concrete wall",
+        confidence: 0.92,
+        relativeAreaPercent: 18.0,
+        boundingBox: dummyBox,
+      },
+      {
+        id: "scaffold-1",
+        concept: "scaffolding",
+        confidence: 0.89,
+        relativeAreaPercent: 11.5,
         boundingBox: dummyBox,
       },
     ];

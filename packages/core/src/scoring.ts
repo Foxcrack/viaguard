@@ -2,7 +2,9 @@ import { DamageFinding, SeverityBreakdown, SeverityLevel } from "./index.js";
 
 /**
  * Per-concept hazard weight multipliers.
- * Neutral utility fixtures (`manhole cover`) have weight `0` and are excluded from damage scoring.
+ * Neutral utility fixtures (`manhole cover`) and positive construction progress elements
+ * (`concrete wall`, `scaffolding`, `excavator`, etc.) have weight `0` and are excluded
+ * from hazard damage scoring (they are still tracked in construction progression diffs).
  */
 export const CONCEPT_WEIGHTS: Record<string, number> = {
   sinkhole: 1.5,
@@ -16,6 +18,41 @@ export const CONCEPT_WEIGHTS: Record<string, number> = {
   patch: 0.7,
   puddle: 0.6,
   "manhole cover": 0,
+  manhole: 0,
+  drain: 0,
+  grate: 0,
+  grating: 0,
+  "concrete wall": 0,
+  "brick wall": 0,
+  "pit wall": 0,
+  "wall panel": 0,
+  wall: 0,
+  scaffolding: 0,
+  scaffold: 0,
+  excavator: 0,
+  crane: 0,
+  shoring: 0,
+  framing: 0,
+  footing: 0,
+  foundation: 0,
+  formwork: 0,
+  brickwork: 0,
+  beam: 0,
+  column: 0,
+  pillar: 0,
+  slab: 0,
+  plank: 0,
+  "wood plank": 0,
+  ladder: 0,
+  pipe: 0,
+  piping: 0,
+  soil: 0,
+  roofing: 0,
+  cladding: 0,
+  fencing: 0,
+  railing: 0,
+  flooring: 0,
+  ceiling: 0,
 };
 
 /** Points awarded per 1% of confidence- and type-weighted total damaged area. */

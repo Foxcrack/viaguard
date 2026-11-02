@@ -85,7 +85,7 @@ export function compareConstructionSites(
   );
 
   let overallAssessment = "Site activity is stable with minor observable variance.";
-  if (netScore >= 20) {
+  if (netScore >= 10) {
     overallAssessment = `Observable structural progression measured across ${
       conceptChanges.filter((c) => c.status === "progress").length
     } target element(s).`;
