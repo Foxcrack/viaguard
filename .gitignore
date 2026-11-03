@@ -44,3 +44,8 @@ coverage/
 tmp/
 .temp/
 
+
+# User original photos - NEVER COMMIT
+my-photos/
+.cache/
+scratch/

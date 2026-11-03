@@ -644,7 +644,12 @@ Return JSON matching the schema:
 - "visualConditionExplanation": strictly ONE concise sentence explaining why the visual condition is rated "${visualConditionLevel}".
 - "summary": concise factual summary keeping Measured severity (SAM) and Visual condition distinct without contradiction.
 - "recommendedAction": actionable public works instructions aligned with the fixed urgency ("${options.urgency}").
-- "keyFindings": brief descriptions of the detected discrete defects.`;
+- "keyFindings": brief descriptions of the detected discrete defects.
+
+CRITICAL HONESTY RULES:
+- If Detected Discrete Findings is "None", you MUST state in "summary": "No discrete defects were measured by SAM".
+- If Detected Discrete Findings is "None" and visual condition is fair, poor, or critical, "recommendedAction" MUST recommend: "Manual inspection recommended ${options.urgency}".
+- Never invent, extrapolate, or name unmeasured defect types or counts in "summary" or "recommendedAction"; mention only the discrete findings detected by SAM.`;
 
   const cacheKey = getCacheKey(model, prompt, options.imageHash);
 

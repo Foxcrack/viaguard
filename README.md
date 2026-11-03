@@ -65,11 +65,12 @@ To reduce false-positive masks on plain asphalt or paint stripes, discard tiny s
    - Road inspections always include `"pothole"` and `"crack"` alongside sanitized Muse Spark suggestions.
 2. **Per-Concept Confidence Thresholds**:
    - `POTHOLE_MIN_CONFIDENCE = 0.5`: Discards `"pothole"` instances with SAM 3.1 confidence `< 0.5`.
+   - `CRACK_MIN_CONFIDENCE = 0.5`: Discards `"crack"` instances with SAM 3.1 confidence `< 0.5`.
    - `DEFAULT_MIN_CONFIDENCE = 0.6`: Discards all other concept instances with SAM 3.1 confidence `< 0.6`.
-3. **Minimum Instance Size (`MIN_AREA_RATIO = 0.0015`)**:
-   - `MIN_AREA_RATIO = 0.0015` (`0.15%` of total image pixel area): Discards tiny distant specks or small SAM artifacts whose mask covers `< 0.15%` of the frame (`filterFindingsByMinArea`), as very small masks are unreliable from a handheld street photo.
-4. **Cross-Instance Non-Maximum Suppression (`NMS_IOU_THRESHOLD = 0.5`)**:
-   - Runs across surviving instances regardless of concept label, computing pixel-level binary mask IoU (from `@meta-sam/parser` rasters) and bounding-box IoU. Whenever `IoU > 0.5`, only the highest-confidence instance is retained.
+3. **Minimum Instance Size (`MIN_AREA_RATIO = 0.0005`)**:
+   - `MIN_AREA_RATIO = 0.0005` (`0.05%` of total image pixel area): Discards tiny distant specks or small SAM artifacts whose mask covers `< 0.05%` of the frame (`filterFindingsByMinArea`).
+4. **Cross-Instance Non-Maximum Suppression (`NMS_IOU_THRESHOLD = 0.5`) with Hazard Preservation**:
+   - Runs across surviving instances computing pixel-level binary mask IoU (from `@meta-sam/parser` rasters) and bounding-box IoU. Whenever `IoU > 0.5`, only the highest-confidence instance is retained, with one critical rule: **Hazard-aware NMS** guarantees that neutral fixtures (`CONCEPT_WEIGHTS == 0`, e.g. `"manhole cover"`) never suppress genuine damage hazards (`"pothole"`, `"crack"`).
 
 In the frontend overlay (`apps/web/src/components/MaskOverlayViewer.tsx`), numbered badges (`1, 2, 3...`) match the right-hand findings list, bounding boxes are optional (off by default), visible default badges use collision-avoidance capped at `MAX_VISIBLE_BADGES = 8` (prioritizing highest confidence), and the full label callout appears on hover or selection.
 
@@ -191,7 +192,7 @@ pnpm dev
 ```bash
 pnpm test
 ```
-Runs 55 Vitest tests validating safe SSE streaming & client abort resiliency, concept sanitizing, confidence filtering, minimum mask area (`MIN_AREA_RATIO`), cross-concept NMS, area-dominant severity scoring & breakdown, separated SAM vs. Muse Spark signals, neutral titles, deterministic urgency mapping, geospatial Leaflet coordinate ordering, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
+Runs 58 Vitest tests validating safe SSE streaming & client abort resiliency, concept sanitizing, confidence filtering, minimum mask area (`MIN_AREA_RATIO`), cross-concept NMS, area-dominant severity scoring & breakdown, separated SAM vs. Muse Spark signals, honest zero-finding report text, deterministic urgency mapping, geospatial Leaflet coordinate ordering, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
 
 ### 6. Run Headless CLI Inspection
 ```bash
@@ -219,10 +220,12 @@ pnpm analyze:sample ./my-photos/site-before.jpg ./my-photos/site-after.jpg
 
 ## 🧪 Validation Status
 
-- **Road Damage Module**: Tested during development on third-party photos that are NOT included in this repository. Validation results on the author's own photos: to be added.
-- **Construction Progress Module**: Works end-to-end against the live Meta Model API (`muse-spark-1.3` and `sam-3.1`), but has so far only been tested during development on synthetic illustrations and on edited pairs — NOT on real before/after field photos. Validation results on the author's own photos: to be added.
-- **Sample Images Directory (`apps/web/public/samples/`)**: Empty placeholder directory. Users and the author can place their own photos here to test the inspection pipeline.
-- **Results on author's own photos**: to be added.
+- **Road Damage Module**: Evaluated live against Meta Model APIs (`sam-3.1` and `muse-spark-1.3`) using 10 original street photos taken in Cali, Colombia (`my-photos/`, kept gitignored for privacy). Split 50/50 into Group A (tuning: `1.jpg`–`5.jpg`) and Group B (verification: `6.jpg`–`10.jpg`). Key findings:
+  - Healthy road test photo (`6.jpg`, clean intersection) preserved **0 false positives** after minimum size filtering (`MIN_AREA_RATIO = 0.0005`), correctly scoring 0/100 (low severity).
+  - Potholes and discrete cracks were reliably localized across both groups with privacy blur active.
+  - **Diffuse Distress Limitation**: On continuous alligator cracking without discrete boundaries (`3.jpg`), SAM 3.1 returned 0 raw instance masks even on closer crops. In Viaguard, this is handled transparently: Muse Spark correctly identifies the visual condition as `poor`, the separated score badge reflects `0/100 (low)`, the signal mismatch note alerts inspectors, and the system enforces an honest summary: *"No discrete defects were measured by SAM. Manual inspection recommended."*
+- **Construction Progress Module**: Works end-to-end against the live Meta Model API (`muse-spark-1.3` and `sam-3.1`), but has so far only been tested during development on synthetic illustrations and on edited pairs — NOT on real before/after field photos.
+- **Sample Images Directory (`apps/web/public/samples/`)**: Empty placeholder directory. Users and inspectors can place their own photos here to test the inspection pipeline.
 
 ---
 

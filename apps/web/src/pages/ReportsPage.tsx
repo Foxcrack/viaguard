@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { SectionReveal } from "@/components/SectionReveal";
 import { api } from "../api/client.ts";
-import { InspectionReport, normalizeInspectionReport } from "@viaguard/core";
+import { InspectionReport, normalizeInspectionReport, formatInspectionDate } from "@viaguard/core";
 import { FileText, Printer, Eye, Calendar, MapPin, Search } from "lucide-react";
 
 export const ReportsPage: React.FC = () => {
@@ -192,7 +192,7 @@ export const ReportsPage: React.FC = () => {
                   <td className="py-3.5 px-4 text-[11px] text-slate-400 space-y-1">
                     <div className="flex items-center space-x-1">
                       <Calendar className="w-3 h-3 text-slate-500" />
-                      <span>{new Date(r.createdAt).toLocaleDateString()}</span>
+                      <span>{formatInspectionDate(r.createdAt)}</span>
                     </div>
                     {r.location ? (
                       <div className="flex items-center space-x-1 text-blue-400 font-mono tabular-nums">

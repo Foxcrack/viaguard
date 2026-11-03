@@ -10,6 +10,9 @@ import {
   toSingleSentenceExplanation,
   normalizeInspectionReport,
   InspectionReport,
+  enforceHonestReportText,
+  formatInspectionDate,
+  formatInspectionDateTime,
 } from "../src/index.js";
 
 describe("Report Signals Separation, Neutral Titles & Deterministic Urgency", () => {
@@ -112,5 +115,54 @@ describe("Report Signals Separation, Neutral Titles & Deterministic Urgency", ()
     expect(normalized.visualCondition?.explanation.length).toBeGreaterThan(10);
     expect(normalized.signalDiscrepancyNote).toBe(SIGNAL_MISMATCH_NOTE);
     expect(normalized.limitations).toBe(REPORT_LIMITATIONS_TEXT);
+    expect(normalized.summary).toContain("No discrete defects were measured by SAM");
+    expect(normalized.recommendedAction).toContain("Manual inspection recommended within 30 days");
+  });
+
+  it("enforces honest report text: zero-finding reports state no discrete defects and recommend manual inspection", () => {
+    const zeroDefectsHonest = enforceHonestReportText({
+      summary: "Pavement shows a small pothole and longitudinal cracking.",
+      recommendedAction: "Clean and patch the potholes immediately.",
+      findings: [],
+      visualConditionLevel: "poor",
+      urgency: "within 30 days",
+    });
+
+    expect(zeroDefectsHonest.summary).toBe(
+      "No discrete defects were measured by SAM. Overall visual condition is separately rated poor; assigned policy urgency is within 30 days."
+    );
+    expect(zeroDefectsHonest.recommendedAction).toBe(
+      "Manual inspection recommended within 30 days to evaluate diffuse surface condition."
+    );
+
+    // Good visual condition gets routine monitoring
+    const goodHonest = enforceHonestReportText({
+      summary: "Clean road.",
+      recommendedAction: "None.",
+      findings: [],
+      visualConditionLevel: "good",
+      urgency: "within 30 days",
+    });
+    expect(goodHonest.recommendedAction).toBe(
+      "Routine monitoring and scheduled maintenance within 30 days."
+    );
+
+    // When findings exist, summary must not contradict findings
+    const withFindings = enforceHonestReportText({
+      summary: "Road shows 2 potholes.",
+      recommendedAction: "Cold patch 2 potholes within 14 days.",
+      findings: [{ concept: "pothole" }, { concept: "pothole" }],
+      visualConditionLevel: "medium",
+      urgency: "within 14 days",
+    });
+    expect(withFindings.summary).toBe("Road shows 2 potholes.");
+    expect(withFindings.recommendedAction).toBe("Cold patch 2 potholes within 14 days.");
+  });
+
+  it("formats dates unambiguously in ISO/standard English format", () => {
+    expect(formatInspectionDate("2026-11-03T18:00:00.000Z")).toBe("Nov 3, 2026");
+    expect(formatInspectionDateTime("2026-11-03T18:05:00.000Z")).toBe(
+      "Nov 3, 2026, 18:05 UTC"
+    );
   });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   POTHOLE_MIN_CONFIDENCE,
+  CRACK_MIN_CONFIDENCE,
   DEFAULT_MIN_CONFIDENCE,
   NMS_IOU_THRESHOLD,
   MIN_AREA_RATIO,
@@ -48,14 +49,15 @@ describe("Concept Sanitizing", () => {
 });
 
 describe("Confidence Threshold Filtering", () => {
-  it("exports documented threshold constants (0.5 pothole, 0.6 others, 0.5 NMS IoU, 0.0015 min area ratio)", () => {
+  it("exports documented threshold constants (0.5 pothole, 0.5 crack, 0.6 others, 0.5 NMS IoU, 0.0005 min area ratio)", () => {
     expect(POTHOLE_MIN_CONFIDENCE).toBe(0.5);
+    expect(CRACK_MIN_CONFIDENCE).toBe(0.5);
     expect(DEFAULT_MIN_CONFIDENCE).toBe(0.6);
     expect(NMS_IOU_THRESHOLD).toBe(0.5);
-    expect(MIN_AREA_RATIO).toBe(0.0015);
+    expect(MIN_AREA_RATIO).toBe(0.0005);
   });
 
-  it("discards pothole < 0.5 and other concepts < 0.6", () => {
+  it("discards pothole < 0.5, crack < 0.5, and other concepts < 0.6", () => {
     const items: CandidateFinding[] = [
       {
         id: "p-low",
@@ -74,21 +76,35 @@ describe("Confidence Threshold Filtering", () => {
       {
         id: "c-low",
         concept: "crack",
-        confidence: 0.55,
+        confidence: 0.48,
         relativeAreaPercent: 2.1,
         boundingBox: { x1: 250, y1: 250, x2: 350, y2: 270, width: 100, height: 20 },
       },
       {
         id: "c-ok",
         concept: "crack",
-        confidence: 0.6,
+        confidence: 0.5,
         relativeAreaPercent: 1.8,
         boundingBox: { x1: 400, y1: 400, x2: 500, y2: 420, width: 100, height: 20 },
+      },
+      {
+        id: "d-low",
+        concept: "debris",
+        confidence: 0.58,
+        relativeAreaPercent: 1.0,
+        boundingBox: { x1: 500, y1: 500, x2: 550, y2: 550, width: 50, height: 50 },
+      },
+      {
+        id: "d-ok",
+        concept: "debris",
+        confidence: 0.6,
+        relativeAreaPercent: 1.0,
+        boundingBox: { x1: 600, y1: 600, x2: 650, y2: 650, width: 50, height: 50 },
       },
     ];
 
     const kept = filterFindingsByConfidence(items);
-    expect(kept.map((f) => f.id)).toEqual(["p-ok", "c-ok"]);
+    expect(kept.map((f) => f.id)).toEqual(["p-ok", "c-ok", "d-ok"]);
   });
 });
 
@@ -162,46 +178,68 @@ describe("Cross-Concept Non-Maximum Suppression (NMS)", () => {
   });
 });
 
-describe("Minimum Instance Size Filtering (MIN_AREA_RATIO = 0.0015 / 0.15%)", () => {
-  it("discards masks below 0.15% of image area and retains masks >= 0.15%", () => {
+describe("Minimum Instance Size Filtering (MIN_AREA_RATIO = 0.0005 / 0.05%)", () => {
+  it("discards masks below 0.05% of image area and retains masks >= 0.05%", () => {
     const items: CandidateFinding[] = [
       {
-        id: "speck-008",
+        id: "speck-003",
         concept: "pothole",
         confidence: 0.54,
-        relativeAreaPercent: 0.08, // < 0.15% -> discard
+        relativeAreaPercent: 0.03, // < 0.05% -> discard
         boundingBox: { x1: 2, y1: 181, x2: 40, y2: 188, width: 38, height: 7 },
       },
       {
-        id: "speck-013",
+        id: "speck-004",
         concept: "pothole",
         confidence: 0.66,
-        relativeAreaPercent: 0.13, // < 0.15% -> discard
+        relativeAreaPercent: 0.04, // < 0.05% -> discard
         boundingBox: { x1: 49, y1: 212, x2: 86, y2: 221, width: 37, height: 9 },
       },
       {
-        id: "edge-015",
+        id: "edge-005",
         concept: "pothole",
         confidence: 0.7,
-        relativeAreaPercent: 0.15, // == 0.15% -> keep
+        relativeAreaPercent: 0.05, // == 0.05% -> keep
         boundingBox: { x1: 100, y1: 180, x2: 140, y2: 195, width: 40, height: 15 },
       },
       {
         id: "valid-095",
         concept: "pothole",
         confidence: 0.8,
-        relativeAreaPercent: 0.95, // > 0.15% -> keep
+        relativeAreaPercent: 0.95, // > 0.05% -> keep
         boundingBox: { x1: 305, y1: 247, x2: 394, y2: 273, width: 89, height: 26 },
       },
     ];
 
     expect(filterFindingsByMinArea(items).map((f) => f.id)).toEqual([
-      "edge-015",
+      "edge-005",
       "valid-095",
     ]);
 
     const processed = postProcessFindings(items);
-    expect(processed.map((f) => f.id)).toEqual(["valid-095", "edge-015"]);
+    expect(processed.map((f) => f.id)).toEqual(["valid-095", "edge-005"]);
+  });
+
+  it("ensures zero-weight neutral objects like manhole cover do NOT suppress damage hazards", () => {
+    const findings: CandidateFinding[] = [
+      {
+        id: "manhole-1",
+        concept: "manhole cover",
+        confidence: 0.94,
+        relativeAreaPercent: 0.77,
+        boundingBox: { x1: 100, y1: 100, x2: 200, y2: 200, width: 100, height: 100 },
+      },
+      {
+        id: "pothole-1",
+        concept: "pothole",
+        confidence: 0.82,
+        relativeAreaPercent: 0.78,
+        boundingBox: { x1: 102, y1: 101, x2: 198, y2: 199, width: 96, height: 98 },
+      },
+    ];
+
+    const deduped = deduplicateFindingsNMS(findings);
+    expect(deduped.map((f) => f.id)).toContain("pothole-1");
   });
 });
 

@@ -6,6 +6,7 @@ import {
   InspectionReport,
   REPORT_LIMITATIONS_TEXT,
   normalizeInspectionReport,
+  formatInspectionDateTime,
 } from "@viaguard/core";
 import { MaskOverlayViewer } from "../components/MaskOverlayViewer.tsx";
 import { SeverityBreakdownCard } from "../components/SeverityBreakdownCard.tsx";
@@ -104,7 +105,7 @@ export const ReportDetailPage: React.FC = () => {
               </span>
               <span className="text-slate-400 flex items-center space-x-1 font-mono text-[11px]">
                 <Calendar className="w-3.5 h-3.5" />
-                <span>{new Date(normReport.createdAt).toLocaleString()}</span>
+                <span>{formatInspectionDateTime(normReport.createdAt)}</span>
               </span>
               {normReport.privacyBlurApplied !== false && (
                 <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/35 text-blue-300 font-mono text-[11px] font-semibold">

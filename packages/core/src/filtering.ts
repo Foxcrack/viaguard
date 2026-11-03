@@ -1,19 +1,24 @@
 import { BoundingBox, DamageFinding, DEFAULT_CONSTRUCTION_CONCEPTS } from "./index.js";
+import { CONCEPT_WEIGHTS } from "./scoring.js";
 
 /** Minimum SAM 3.1 confidence threshold for "pothole" detections. */
 export const POTHOLE_MIN_CONFIDENCE = 0.5;
 
-/** Minimum SAM 3.1 confidence threshold for all non-pothole concepts. */
+/** Minimum SAM 3.1 confidence threshold for "crack" detections. */
+export const CRACK_MIN_CONFIDENCE = 0.5;
+
+/** Minimum SAM 3.1 confidence threshold for all non-pothole/non-crack concepts. */
 export const DEFAULT_MIN_CONFIDENCE = 0.6;
 
 /** Cross-instance Non-Maximum Suppression IoU threshold (mask or box IoU > 0.5). */
 export const NMS_IOU_THRESHOLD = 0.5;
 
 /**
- * Minimum mask area ratio relative to total image area (`0.0015` = `0.15%` of frame).
- * SAM 3.1 masks smaller than 0.15% of the image area are discarded as unreliable speckle/distant noise.
+ * Minimum mask area ratio relative to total image area (`0.0005` = `0.05%` of frame).
+ * Real-photo evaluation shows masks between 0.05% and 0.15% represent legitimate distant defects
+ * (small potholes and narrow cracks), while sub-0.05% specks are discarded as unreliable noise.
  */
-export const MIN_AREA_RATIO = 0.0015;
+export const MIN_AREA_RATIO = 0.0005;
 
 /** Confidence threshold used when segmenting privacy-sensitive regions ("person", "license plate"). */
 export const PRIVACY_MIN_CONFIDENCE = 0.25;
@@ -209,12 +214,13 @@ export function sanitizeConcepts(
 
 /**
  * Returns the minimum confidence threshold for a given SAM concept:
- * `0.5` for `"pothole"`, `0.6` for all other concepts.
+ * `0.5` for `"pothole"`, `0.5` for `"crack"`, `0.6` for all other concepts.
  */
 export function getMinConfidenceForConcept(concept: string): number {
-  return concept.trim().toLowerCase() === "pothole"
-    ? POTHOLE_MIN_CONFIDENCE
-    : DEFAULT_MIN_CONFIDENCE;
+  const c = concept.trim().toLowerCase();
+  if (c === "pothole") return POTHOLE_MIN_CONFIDENCE;
+  if (c === "crack") return CRACK_MIN_CONFIDENCE;
+  return DEFAULT_MIN_CONFIDENCE;
 }
 
 /**
@@ -322,10 +328,16 @@ export function computeMaskIoU(a: CandidateFinding, b: CandidateFinding): number
   return unionPixels > 0 ? intersectionPixels / unionPixels : 0;
 }
 
+function isHazardConcept(concept: string): boolean {
+  const w = CONCEPT_WEIGHTS[concept.trim().toLowerCase()];
+  return w === undefined || w > 0;
+}
+
 /**
  * Applies cross-instance Non-Maximum Suppression across ALL findings regardless of concept.
  * Sorts descending by confidence and suppresses any lower-confidence instance whose mask IoU
  * or bounding-box IoU with an already-kept instance exceeds `iouThreshold` (default `0.5`).
+ * Neutral zero-hazard elements (e.g. "manhole cover") do NOT suppress real road damage hazards (e.g. "pothole").
  */
 export function deduplicateFindingsNMS(
   findings: readonly CandidateFinding[],
@@ -341,8 +353,12 @@ export function deduplicateFindingsNMS(
       const boxIou = computeBoxIoU(existing.boundingBox, candidate.boundingBox);
       const effectiveIou = maskIou !== null ? Math.max(maskIou, boxIou) : boxIou;
       if (effectiveIou > iouThreshold) {
-        suppressed = true;
-        break;
+        const existingIsHazard = isHazardConcept(existing.concept);
+        const candidateIsHazard = isHazardConcept(candidate.concept);
+        if (existingIsHazard || !candidateIsHazard) {
+          suppressed = true;
+          break;
+        }
       }
     }
     if (!suppressed) {

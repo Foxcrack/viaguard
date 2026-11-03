@@ -3,6 +3,7 @@ import {
   REPORT_LIMITATIONS_TEXT,
   calculateSeverity,
   normalizeInspectionReport,
+  formatInspectionDateTime,
 } from "@viaguard/core";
 
 export function generateHtmlReport(rawReport: InspectionReport): string {
@@ -180,7 +181,7 @@ export function generateHtmlReport(rawReport: InspectionReport): string {
       </div>
       <h1 style="margin: 0; font-size: 24px; color: #0f172a;">${report.title}</h1>
       <div style="font-size: 12px; color: #64748b; margin-top: 6px;">
-        Report ID: <strong>${report.id}</strong> | Timestamp: ${new Date(report.createdAt).toLocaleString()}
+        Report ID: <strong>${report.id}</strong> | Timestamp: ${formatInspectionDateTime(report.createdAt)}
         ${
           report.privacyBlurApplied !== false
             ? ` | <span style="display: inline-block; padding: 1px 8px; border-radius: 9999px; background: #eff6ff; border: 1px solid #93c5fd; color: #1d4ed8; font-weight: 600; font-size: 11px;">Privacy blur: on</span>`

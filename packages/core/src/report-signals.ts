@@ -238,10 +238,19 @@ export function normalizeInspectionReport(report: InspectionReport): InspectionR
   });
 
   const deterministicUrgency = getUrgencyForSeverity(measuredSeverity.level);
+  const honestTexts = enforceHonestReportText({
+    summary: report.summary,
+    recommendedAction: report.recommendedAction,
+    findings: report.afterFindings ?? report.findings,
+    visualConditionLevel: visualLevel,
+    urgency: deterministicUrgency,
+  });
 
   return {
     ...report,
     title: neutralTitle,
+    summary: honestTexts.summary,
+    recommendedAction: honestTexts.recommendedAction,
     overallCondition: visualLevel,
     severityBreakdown: breakdown,
     measuredSeverity,
@@ -249,5 +258,86 @@ export function normalizeInspectionReport(report: InspectionReport): InspectionR
     signalDiscrepancyNote,
     limitations: REPORT_LIMITATIONS_TEXT,
     estimatedUrgency: deterministicUrgency,
+  };
+}
+
+
+const MONTH_NAMES = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/**
+ * Formats an ISO date string as an unambiguous standard date ("Nov 3, 2026").
+ */
+export function formatInspectionDate(isoString: string): string {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+    const year = d.getUTCFullYear();
+    const month = MONTH_NAMES[d.getUTCMonth()];
+    const day = d.getUTCDate();
+    return `${month} ${day}, ${year}`;
+  } catch {
+    return isoString;
+  }
+}
+
+/**
+ * Formats an ISO date string as an unambiguous date-time ("Nov 3, 2026, 18:30 UTC").
+ */
+export function formatInspectionDateTime(isoString: string): string {
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return isoString;
+    const year = d.getUTCFullYear();
+    const month = MONTH_NAMES[d.getUTCMonth()];
+    const day = d.getUTCDate();
+    const hours = String(d.getUTCHours()).padStart(2, "0");
+    const mins = String(d.getUTCMinutes()).padStart(2, "0");
+    return `${month} ${day}, ${year}, ${hours}:${mins} UTC`;
+  } catch {
+    return isoString;
+  }
+}
+
+/**
+ * Enforces strict honesty on report narrative and recommendations:
+ * - If SAM found 0 defects: summary MUST state "No discrete defects were measured by SAM",
+ *   and recommended action MUST recommend "Manual inspection recommended" if visual condition
+ *   is fair, poor, or critical.
+ * - Muse Spark must never mention defect types or counts that SAM did not measure.
+ */
+export function enforceHonestReportText(options: {
+  summary: string;
+  recommendedAction: string;
+  findings: readonly { concept: string }[];
+  visualConditionLevel: VisualConditionLevel | string;
+  urgency: string;
+}): { summary: string; recommendedAction: string } {
+  const { findings, visualConditionLevel, urgency } = options;
+  const levelLower = (visualConditionLevel || "fair").toLowerCase();
+
+  if (findings.length === 0) {
+    const summary = `No discrete defects were measured by SAM. Overall visual condition is separately rated ${levelLower}; assigned policy urgency is ${urgency}.`;
+    const isFairOrPoor =
+      levelLower === "fair" || levelLower === "poor" || levelLower === "critical";
+    const recommendedAction = isFairOrPoor
+      ? `Manual inspection recommended ${urgency} to evaluate diffuse surface condition.`
+      : `Routine monitoring and scheduled maintenance ${urgency}.`;
+    return { summary, recommendedAction };
+  }
+
+  // When findings exist, ensure summary doesn't claim 0 defects
+  let summary = options.summary;
+  if (summary.includes("No discrete defects") || summary.includes("None detected")) {
+    const count = findings.length;
+    const concepts = Array.from(new Set(findings.map((f) => f.concept))).join(", ");
+    summary = `Measured ${count} discrete defect${count > 1 ? "s" : ""} (${concepts}). Visual condition is rated ${levelLower}; repair urgency is ${urgency}.`;
+  }
+
+  return {
+    summary,
+    recommendedAction: options.recommendedAction,
   };
 }

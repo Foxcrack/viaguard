@@ -12,7 +12,10 @@
     "lint": "pnpm --filter @viaguard/core build && pnpm -r lint",
     "check:meta": "pnpm --filter @viaguard/core build && pnpm --filter @viaguard/api check:meta",
     "analyze:sample": "pnpm --filter @viaguard/core build && pnpm --filter @viaguard/api analyze:sample",
-    "record:demo": "pnpm --filter @viaguard/core build && pnpm --filter @viaguard/api record:demo"
+    "record:demo": "pnpm --filter @viaguard/core build && pnpm --filter @viaguard/api record:demo",
+    "eval:photos": "pnpm --filter @viaguard/core build && pnpm --filter @viaguard/api eval:photos",
+    "debug:raw": "pnpm --filter @viaguard/core build && pnpm --filter @viaguard/api debug:raw",
+    "rebuild:reports": "pnpm --filter @viaguard/core build && pnpm --filter @viaguard/api rebuild:reports"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
