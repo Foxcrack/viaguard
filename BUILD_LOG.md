@@ -651,3 +651,50 @@ Summary:
 - `pnpm typecheck`: Passed (0 errors across `@viaguard/core`, `@viaguard/api`, `@viaguard/web`).
 - `pnpm test`: Passed (51/51 tests passing across workspace).
 - `pnpm build`: Passed cleanly.
+
+---
+
+## 2026-11-03 – Removal of Prototype Samples, Uploads & Local Data for Clean State
+
+### 1. Scope & Deletion Report
+To prepare the repository for testing exclusively on the author's own photos without prototype or third-party artifacts:
+- **Local Runtime Data Emptied (`apps/api/uploads/`, `apps/api/data/`, `data/`)**:
+  - Deleted all 30 upload files and processed derivatives in `apps/api/uploads/` (including blurred output files, montage outputs, and test uploads).
+  - Deleted cached reports and database files in `apps/api/data/` (including `rep-test-cali*`, `rep-road-*`, `rep-const-*` records, and cache folder) and root `data/reports.json`.
+  - Retained empty directory structures tracked by `.gitkeep` (`apps/api/uploads/.gitkeep`, `apps/api/data/.gitkeep`, `data/.gitkeep`, `data/cache/.gitkeep`).
+  - Updated root `.gitignore` rules with wildcard syntax (`apps/api/uploads/*`, `!apps/api/uploads/.gitkeep`, `apps/api/data/*`, `!apps/api/data/.gitkeep`, `data/*`, `!data/.gitkeep`, `data/cache/*`, `!data/cache/.gitkeep`) so runtime files are ignored while `.gitkeep` remains committed.
+- **Third-Party External Photos Deleted from Workspace**:
+  - Deleted `scratch/real-street-photo.jpg`, `scratch/real-street-photo-b.jpg`, `scratch/map-test-*.png`, `scratch/edge-profile/`, and generated log media in `.system_generated/logs/media/`. No copies remain in scratch or brain directories.
+- **Prototype Sample Images & Generator Script Removed (`apps/web/public/samples/`, `apps/api/src/`)**:
+  - Removed via `git rm`:
+    - `apps/web/public/samples/road-sample-pothole.jpg`
+    - `apps/web/public/samples/road-sample-cracks.jpg`
+    - `apps/web/public/samples/construction-before-site.jpg`
+    - `apps/web/public/samples/construction-after-site.jpg`
+    - `apps/api/src/generate-samples.ts`
+  - Replaced `apps/web/public/samples/README.md` with:
+    `Add your own photos here. Do not commit images you do not own.`
+  - Updated `THIRD_PARTY.md` removing the sample assets conformance section.
+
+### 2. Isolation of Tests from Runtime Folders (`apps/api/src/paths.ts`)
+- Automated tests (`NODE_ENV === "test"`) now dynamically resolve `DATA_DIR` and `UPLOAD_DIR` to temporary directories under `os.tmpdir()` (`viaguard-test-data` and `viaguard-test-uploads`). Running `pnpm test` no longer writes to or pollutes `apps/api/uploads/` or `apps/api/data/`.
+- Updated `apps/api/test/api.test.ts` to test `GET /api/demo/samples` returning an array without requiring static samples to exist on disk.
+- Updated `apps/api/src/cli-sample.ts` to accept explicit photo paths without relying on synthetic in-memory image generation.
+
+### 3. Graceful Empty States in Web Application
+- **Civic Map (`InspectionMap.tsx`, `MapPage.tsx`)**:
+  - When 0 reports exist, defaults center to Cali, Colombia (`[3.4516, -76.532]`, zoom `12`).
+  - Shows a helpful banner inviting the user to run their first road or construction inspection.
+- **Reports Table (`ReportsPage.tsx`)**:
+  - With 0 reports, displays a clean empty state card ("No inspections yet") with primary CTAs to "Inspect a Road" and "Track Construction Site".
+- **Home & Upload Views (`RoadPage.tsx`, `ConstructionPage.tsx`)**:
+  - Sample selectors and "Load Sample Pair" buttons are conditionally hidden when `samples.length === 0`.
+- **Honest Validation Disclosures (`README.md`)**:
+  - Updated Validation Status to state: `"Tested during development on third-party photos that are NOT included in this repository. Validation results on the author's own photos: to be added."`
+
+### 4. Verification
+- `git ls-files | findstr /i "jpg jpeg png webp"`: Returned 0 files (zero image binaries in git tree).
+- Directory listings for `apps/api/uploads/`, `apps/api/data/`, and `data/`: Contain only `.gitkeep`.
+- `pnpm typecheck`: Passed with 0 errors across all 3 packages (`@viaguard/core`, `@viaguard/api`, `@viaguard/web`).
+- `pnpm test`: All 51 unit and integration tests passing.
+- `pnpm build`: Passed cleanly.

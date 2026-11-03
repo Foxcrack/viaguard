@@ -28,15 +28,11 @@ describe("Viaguard Backend API Endpoints", () => {
     expect(data.privacyBlurDefault).toBe(true);
   });
 
-  it("GET /api/demo/samples returns bundled sample images", async () => {
+  it("GET /api/demo/samples returns empty array or user-provided sample images", async () => {
     const res = await app.request("/api/demo/samples");
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(Array.isArray(data.samples)).toBe(true);
-    expect(data.samples.length).toBeGreaterThan(0);
-    const first = data.samples[0];
-    expect(first).toHaveProperty("url");
-    expect(first).toHaveProperty("module");
   });
 
   it("POST /api/road/analyze rejects requests without image file", async () => {
@@ -64,7 +60,7 @@ describe("Viaguard Backend API Endpoints", () => {
         .toBuffer();
 
       const formData = new FormData();
-      formData.append("image", new Blob([imgBuf], { type: "image/jpeg" }), "road-sample-pothole.jpg");
+      formData.append("image", new Blob([imgBuf], { type: "image/jpeg" }), "test-road.jpg");
 
       const res = await app.request("/api/road/analyze", {
         method: "POST",
@@ -124,7 +120,7 @@ describe("Viaguard Backend API Endpoints", () => {
       id: "test-rep-export-1",
       module: "road",
       createdAt: "2026-10-30T06:52:23.714Z",
-      imageUrl: "/samples/road-sample-pothole.jpg",
+      imageUrl: "/uploads/test-road.jpg",
       imageWidth: 800,
       imageHeight: 600,
       sceneType: "asphalt road",

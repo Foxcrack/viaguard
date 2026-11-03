@@ -3,10 +3,9 @@ loadEnv();
 
 import * as fs from "fs";
 import * as path from "path";
-import sharp from "sharp";
 import { runRoadPipeline, runConstructionPipeline } from "./pipeline.js";
 
-async function getOrGenerateSampleBuffer(imageArg?: string): Promise<{ buffer: Buffer; name: string }> {
+async function resolveImageFile(imageArg?: string): Promise<{ buffer: Buffer; name: string } | null> {
   if (imageArg) {
     const candidates = [
       imageArg,
@@ -19,6 +18,7 @@ async function getOrGenerateSampleBuffer(imageArg?: string): Promise<{ buffer: B
         return { buffer: fs.readFileSync(cand), name: path.basename(cand) };
       }
     }
+    return null;
   }
 
   // Look in apps/web/public/samples
@@ -38,31 +38,7 @@ async function getOrGenerateSampleBuffer(imageArg?: string): Promise<{ buffer: B
     }
   }
 
-  // Generate synthetic sample road image with pothole defect
-  console.log("No external sample provided. Generating synthetic road damage image (800x600)...");
-  const svg = Buffer.from(`
-    <svg width="800" height="600">
-      <rect width="800" height="600" fill="#374151" />
-      <ellipse cx="400" cy="350" rx="140" ry="70" fill="#111827" stroke="#1f2937" stroke-width="8" />
-      <path d="M 220 340 L 250 355 L 290 345" stroke="#111827" stroke-width="4" fill="none" />
-      <path d="M 520 360 L 570 375 L 610 370" stroke="#111827" stroke-width="4" fill="none" />
-      <circle cx="680" cy="180" r="45" fill="#4b5563" stroke="#1f2937" stroke-width="6" />
-    </svg>
-  `);
-
-  const buf = await sharp({
-    create: {
-      width: 800,
-      height: 600,
-      channels: 3,
-      background: { r: 55, g: 65, b: 81 },
-    },
-  })
-    .composite([{ input: svg, blend: "over" }])
-    .jpeg({ quality: 85 })
-    .toBuffer();
-
-  return { buffer: buf, name: "synthetic-road-pothole.jpg" };
+  return null;
 }
 
 async function main() {
@@ -75,8 +51,16 @@ async function main() {
 
   try {
     if (imageArg && afterArg) {
-      const beforeInput = await getOrGenerateSampleBuffer(imageArg);
-      const afterInput = await getOrGenerateSampleBuffer(afterArg);
+      const beforeInput = await resolveImageFile(imageArg);
+      const afterInput = await resolveImageFile(afterArg);
+      if (!beforeInput) {
+        console.error(`Error: Before-image not found: "${imageArg}"`);
+        process.exit(1);
+      }
+      if (!afterInput) {
+        console.error(`Error: After-image not found: "${afterArg}"`);
+        process.exit(1);
+      }
       console.log(
         `Processing construction pair: ${beforeInput.name} (${beforeInput.buffer.length} B) -> ${afterInput.name} (${afterInput.buffer.length} B)...`
       );
@@ -145,7 +129,23 @@ async function main() {
       process.exit(0);
     }
 
-    const { buffer, name } = await getOrGenerateSampleBuffer(imageArg);
+    const resolved = await resolveImageFile(imageArg);
+    if (!resolved) {
+      if (imageArg) {
+        console.error(`Error: Image file not found: "${imageArg}"`);
+      } else {
+        console.log("Usage:");
+        console.log("  Road Damage:           pnpm analyze:sample <image-path>");
+        console.log("  Construction Progress: pnpm analyze:sample <before-image-path> <after-image-path>");
+        console.log("\nExamples:");
+        console.log("  pnpm analyze:sample ./my-photos/street-1.jpg");
+        console.log("  pnpm analyze:sample ./my-photos/site-before.jpg ./my-photos/site-after.jpg");
+        console.log("\nOr place your own images in apps/web/public/samples/ to analyze them by default.");
+      }
+      process.exit(1);
+    }
+
+    const { buffer, name } = resolved;
     console.log(`Processing inspection photo: ${name} (${buffer.length} bytes)...`);
 
     const report = await runRoadPipeline({

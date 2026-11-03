@@ -191,15 +191,15 @@ pnpm dev
 ```bash
 pnpm test
 ```
-Runs 41 Vitest tests validating concept sanitizing, confidence filtering, minimum mask area (`MIN_AREA_RATIO`), cross-concept NMS, area-dominant severity scoring & breakdown, separated SAM vs. Muse Spark signals, neutral titles, deterministic urgency mapping, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
+Runs 51 Vitest tests validating concept sanitizing, confidence filtering, minimum mask area (`MIN_AREA_RATIO`), cross-concept NMS, area-dominant severity scoring & breakdown, separated SAM vs. Muse Spark signals, neutral titles, deterministic urgency mapping, geospatial Leaflet coordinate ordering, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
 
 ### 6. Run Headless CLI Inspection
 ```bash
 # Single-photo Road Damage inspection
-pnpm analyze:sample apps/web/public/samples/road-sample-pothole.jpg
+pnpm analyze:sample ./my-photos/street-1.jpg
 
 # Before & After Construction Progress comparative inspection
-pnpm analyze:sample apps/web/public/samples/construction-before-site.jpg apps/web/public/samples/construction-after-site.jpg
+pnpm analyze:sample ./my-photos/site-before.jpg ./my-photos/site-after.jpg
 ```
 
 ---
@@ -210,8 +210,8 @@ pnpm analyze:sample apps/web/public/samples/construction-before-site.jpg apps/we
 - **Default Mode (Live API)**: Every inspection calls `muse-spark-1.3` and `sam-3.1` live via `https://api.meta.ai/v1`. If `MODEL_API_KEY` is unset or an API error occurs, Viaguard surfaces a clear diagnostic error instead of switching modes.
 - **Recording Local Demo Responses (Optional)**: Once `MODEL_API_KEY` is configured in `.env`, you can optionally record real Meta Model API responses into your local `data/cache/` directory with:
   ```bash
-  pnpm record:demo <road-image-path>
-  pnpm record:demo <before-image-path> <after-image-path>
+  pnpm record:demo ./my-photos/street-1.jpg
+  pnpm record:demo ./my-photos/site-before.jpg ./my-photos/site-after.jpg
   ```
 - **Replaying Locally Recorded Responses**: Only when you explicitly enable Demo Mode (via the UI switch or `DEMO_MODE=true`) after recording with `pnpm record:demo`, Viaguard replays those locally recorded responses from `data/cache/` and displays a persistent **"Replaying cached real responses"** banner. If no local cache exists for that image, Demo Mode returns an explicit error instructing you to record it first or switch back to Live API mode.
 
@@ -219,9 +219,9 @@ pnpm analyze:sample apps/web/public/samples/construction-before-site.jpg apps/we
 
 ## 🧪 Validation Status
 
-- **Road Damage Module**: Tested live end-to-end against the Meta Model API (`muse-spark-1.3` and `sam-3.1`) on real street photos, verifying concept sanitizing, confidence and minimum-area filtering, cross-concept NMS, privacy blurring on pedestrians and license plates, separated severity vs. visual condition signals, and report generation.
-- **Construction Progress Module**: Works end-to-end against the live Meta Model API (`muse-spark-1.3` and `sam-3.1`), **but has so far only been tested on synthetic images and on programmatically edited pairs — NOT on real before/after field photos**.
-- **Bundled Sample Images (`apps/web/public/samples/`)**: All four sample images (`road-sample-pothole.jpg`, `road-sample-cracks.jpg`, `construction-before-site.jpg`, and `construction-after-site.jpg`) are programmatically generated synthetic illustrations, not real camera photographs.
+- **Road Damage Module**: Tested during development on third-party photos that are NOT included in this repository. Validation results on the author's own photos: to be added.
+- **Construction Progress Module**: Works end-to-end against the live Meta Model API (`muse-spark-1.3` and `sam-3.1`), but has so far only been tested during development on synthetic illustrations and on edited pairs — NOT on real before/after field photos. Validation results on the author's own photos: to be added.
+- **Sample Images Directory (`apps/web/public/samples/`)**: Empty placeholder directory. Users and the author can place their own photos here to test the inspection pipeline.
 - **Results on author's own photos**: to be added.
 
 ---

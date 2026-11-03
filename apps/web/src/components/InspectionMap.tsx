@@ -39,8 +39,9 @@ const MAP_MIN_ZOOM = 2;
 /** Padding (px) applied when fitting the map to multiple pins. */
 const FIT_BOUNDS_PADDING: [number, number] = [48, 48];
 
-/** Neutral whole-world fallback view when no pins exist. */
-const WORLD_FALLBACK_CENTER: LatLngTuple = [15, 0];
+/** Sensible default fallback center (Cali, Colombia) when no pins exist. */
+export const DEFAULT_FALLBACK_CENTER: LatLngTuple = [3.4516, -76.532];
+export const DEFAULT_FALLBACK_ZOOM = 12;
 
 const NONE_VIEW_KEY = JSON.stringify({ kind: "none" });
 
@@ -184,8 +185,8 @@ function MapAutoFit({
 
 export const InspectionMap: React.FC<InspectionMapProps> = ({
   reports,
-  center = WORLD_FALLBACK_CENTER,
-  zoom = MAP_MIN_ZOOM,
+  center = DEFAULT_FALLBACK_CENTER,
+  zoom = DEFAULT_FALLBACK_ZOOM,
   interactiveSelect = false,
   selectedLocation,
   onLocationSelect,
@@ -230,7 +231,12 @@ export const InspectionMap: React.FC<InspectionMapProps> = ({
           (initialView.bounds[0][1] + initialView.bounds[1][1]) / 2,
         ]
       : center;
-  const initialZoom = initialView.kind === "single" ? SINGLE_PIN_ZOOM : Math.max(zoom, MAP_MIN_ZOOM);
+  const initialZoom =
+    initialView.kind === "single"
+      ? SINGLE_PIN_ZOOM
+      : initialView.kind === "bounds"
+      ? Math.max(zoom, MAP_MIN_ZOOM)
+      : zoom;
 
   return (
     <div className={`relative ${className}`}>

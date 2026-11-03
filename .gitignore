@@ -13,10 +13,17 @@ build/
 .turbo/
 
 # Local databases and uploads
-data/
-uploads/
-apps/api/data/
-apps/api/uploads/
+data/*
+!data/.gitkeep
+!data/cache/
+data/cache/*
+!data/cache/.gitkeep
+uploads/*
+!uploads/.gitkeep
+apps/api/data/*
+!apps/api/data/.gitkeep
+apps/api/uploads/*
+!apps/api/uploads/.gitkeep
 *.sqlite
 *.sqlite3
 *.db

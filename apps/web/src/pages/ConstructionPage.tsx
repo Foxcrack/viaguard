@@ -289,22 +289,24 @@ export const ConstructionPage: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="text-slate-400">
-                Load bundled construction before/after test images (<code className="font-mono text-[11px]">apps/web/public/samples/</code>):
+            {samples.length >= 2 && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-slate-400">
+                  Load construction before/after test images (<code className="font-mono text-[11px]">apps/web/public/samples/</code>):
+                </div>
+                <ClickSpark sparkColor="#60a5fa" disabled={prefersReducedMotion}>
+                  <Magnet padding={24} magnetStrength={2} disabled={prefersReducedMotion || isSmallScreen}>
+                    <button
+                      type="button"
+                      onClick={handleLoadSamplePair}
+                      className="min-h-[38px] px-4 py-2 rounded-xl bg-background hover:bg-slate-800 border border-border text-slate-200 hover:text-white font-semibold transition"
+                    >
+                      Load Construction Before/After Pair
+                    </button>
+                  </Magnet>
+                </ClickSpark>
               </div>
-              <ClickSpark sparkColor="#60a5fa" disabled={prefersReducedMotion}>
-                <Magnet padding={24} magnetStrength={2} disabled={prefersReducedMotion || isSmallScreen}>
-                  <button
-                    type="button"
-                    onClick={handleLoadSamplePair}
-                    className="min-h-[38px] px-4 py-2 rounded-xl bg-background hover:bg-slate-800 border border-border text-slate-200 hover:text-white font-semibold transition"
-                  >
-                    Load Construction Before/After Pair
-                  </button>
-                </Magnet>
-              </ClickSpark>
-            </div>
+            )}
           </div>
 
           {/* Error Banner */}

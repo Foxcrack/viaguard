@@ -93,9 +93,30 @@ export const ReportsPage: React.FC = () => {
       {/* Reports Table */}
       {loading ? (
         <div className="p-12 text-center text-slate-400 text-sm">Loading archive records...</div>
+      ) : reports.length === 0 ? (
+        <div className="bg-surface rounded-2xl border border-border p-12 text-center text-slate-400 text-sm space-y-3">
+          <div className="text-base font-semibold text-slate-200">No inspections yet</div>
+          <p className="max-w-md mx-auto text-xs text-slate-400">
+            Upload a smartphone photo of a road or construction site to generate your first inspection report.
+          </p>
+          <div className="pt-2 flex flex-wrap justify-center gap-3">
+            <Link
+              to="/road"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-xs transition"
+            >
+              Inspect Road Damage
+            </Link>
+            <Link
+              to="/construction"
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-xl text-xs transition border border-border"
+            >
+              Compare Construction
+            </Link>
+          </div>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="bg-surface rounded-2xl border border-border p-12 text-center text-slate-400 text-sm">
-          No matching inspection reports found. Upload a street or construction site photo to generate a report.
+          No matching inspection reports found. Try adjusting your filters.
         </div>
       ) : (
         <div className="bg-surface rounded-2xl border border-border overflow-x-auto shadow">

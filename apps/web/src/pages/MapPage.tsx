@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import CountUp from "@/components/reactbits/CountUp";
 import { SectionReveal } from "@/components/SectionReveal";
 import { api } from "../api/client.ts";
@@ -137,8 +138,21 @@ export const MapPage: React.FC = () => {
           Loading map layers and pins...
         </div>
       ) : (
-        <div className="h-[550px] w-full rounded-2xl overflow-hidden border border-border shadow-2xl">
-          <InspectionMap reports={filteredReports} className="h-full w-full" />
+        <div className="space-y-3">
+          {reports.length === 0 && (
+            <div className="bg-surface/90 rounded-2xl border border-border px-5 py-3.5 text-xs text-slate-300 flex flex-wrap items-center justify-between gap-2 shadow">
+              <span className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>No inspections recorded yet. Map centered on default reference location (Cali, Colombia).</span>
+              </span>
+              <Link to="/road" className="text-blue-400 hover:text-blue-300 font-semibold underline underline-offset-2">
+                Run an inspection &rarr;
+              </Link>
+            </div>
+          )}
+          <div className="h-[550px] w-full rounded-2xl overflow-hidden border border-border shadow-2xl">
+            <InspectionMap reports={filteredReports} className="h-full w-full" />
+          </div>
         </div>
       )}
     </div>

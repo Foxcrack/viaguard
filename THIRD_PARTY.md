@@ -1,6 +1,6 @@
 # Third-Party Dependencies and Assets
 
-This file documents all third-party software libraries, UI components, cartographic tiles, and sample assets utilized by Viaguard along with their licenses and sources.
+This file documents all third-party software libraries, UI components, and cartographic tiles utilized by Viaguard along with their licenses and sources.
 
 ## Core Libraries & Frameworks
 
@@ -95,6 +95,3 @@ SOFTWARE.
 
 ## Map Tiles & Cartography
 - **OpenStreetMap**: Map data and tile rendering © OpenStreetMap contributors, licensed under the Open Database License (ODbL).
-
-## Sample Assets & Conformance Data
-- **Synthetic Sample Input Images** (`apps/web/public/samples/`): Programmatically rendered 800×600 JPEG test input images (asphalt potholes, cracking networks, excavation pits, foundation walls, and scaffolding) generated via `sharp` vector compositing (`apps/api/src/generate-samples.ts`). Released under CC0 / MIT as sample input images only (not cached model responses).

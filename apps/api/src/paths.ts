@@ -1,14 +1,21 @@
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 export const REPO_ROOT = path.resolve(CURRENT_DIR, "..", "..", "..");
-export const DATA_DIR = path.join(REPO_ROOT, "data");
+export const DATA_DIR =
+  process.env.NODE_ENV === "test"
+    ? path.join(os.tmpdir(), "viaguard-test-data")
+    : path.join(REPO_ROOT, "data");
 export const CACHE_DIR = path.join(DATA_DIR, "cache");
-export const UPLOAD_DIR = path.join(REPO_ROOT, "apps", "api", "uploads");
+export const UPLOAD_DIR =
+  process.env.NODE_ENV === "test"
+    ? path.join(os.tmpdir(), "viaguard-test-uploads")
+    : path.join(REPO_ROOT, "apps", "api", "uploads");
 export const SAMPLES_DIR = path.join(REPO_ROOT, "apps", "web", "public", "samples");
 
 let envLoaded = false;

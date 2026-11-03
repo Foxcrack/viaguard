@@ -273,24 +273,26 @@ export const RoadPage: React.FC = () => {
                   </span>
                 </div>
 
-                {/* Sample Images Quick Selector */}
-                <div className="pt-2">
-                  <div className="text-xs text-slate-400 mb-2 font-medium">
-                    Sample test images (<code className="font-mono text-[11px]">apps/web/public/samples/</code>):
+                {/* Sample Images Quick Selector (only if user added photos to samples/) */}
+                {samples.length > 0 && (
+                  <div className="pt-2">
+                    <div className="text-xs text-slate-400 mb-2 font-medium">
+                      Sample test images (<code className="font-mono text-[11px]">apps/web/public/samples/</code>):
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {samples.map((sample) => (
+                        <button
+                          key={sample.id}
+                          type="button"
+                          onClick={() => handleSampleSelect(sample)}
+                          className="min-h-[36px] px-3 py-1.5 rounded-xl bg-background/80 hover:bg-slate-800 border border-border text-xs text-slate-300 hover:text-white transition"
+                        >
+                          {sample.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {samples.map((sample) => (
-                      <button
-                        key={sample.id}
-                        type="button"
-                        onClick={() => handleSampleSelect(sample)}
-                        className="min-h-[36px] px-3 py-1.5 rounded-xl bg-background/80 hover:bg-slate-800 border border-border text-xs text-slate-300 hover:text-white transition"
-                      >
-                        {sample.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Error Message */}
