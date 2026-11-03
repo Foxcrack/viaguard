@@ -138,7 +138,7 @@ export const MapPage: React.FC = () => {
         </div>
       ) : (
         <div className="h-[550px] w-full rounded-2xl overflow-hidden border border-border shadow-2xl">
-          <InspectionMap reports={filteredReports} className="h-full w-full" zoom={13} />
+          <InspectionMap reports={filteredReports} className="h-full w-full" />
         </div>
       )}
     </div>

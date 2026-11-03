@@ -201,4 +201,5 @@ export * from "./scoring.js";
 export * from "./diff.js";
 export * from "./filtering.js";
 export * from "./report-signals.js";
+export * from "./geo.js";
 

@@ -627,3 +627,27 @@ Summary:
 - **Heuristic Disclosure (`README.md`)**: Explicitly documented that severity coefficients, concept weights, score cutoffs, and urgency windows (`7` / `14` / `30` days / `immediate`) are configurable project heuristics, not engineering standards.
 - **Architecture Diagram (`README.md`)**: Updated the Mermaid `flowchart TD` (`photo -> preprocess/privacy blur -> Muse Spark scene -> SAM 3.1 -> filtering/NMS -> deterministic scoring -> Muse Spark report -> map/report`) and verified clean SVG compilation (`MERMAID_SYNTAX_OK`).
 - **Validation Status & Development Transparency (`README.md`)**: Added explicit sections disclosing live real-photo validation on Road Damage, synthetic/edited-pair-only validation so far on Construction Progress (`Results on author's own photos: to be added`), synthetic `apps/web/public/samples/` images, and hackathon development with Antigravity directed and reviewed by the author while Meta SAM 3.1 and Muse Spark power the application at runtime.
+
+
+---
+
+## 2026-11-03 – Civic Map Leaflet World Wrapping, Bounds & Coordinate Order Fix
+
+### 1. Root Cause & Solution
+- **World duplication / repeated tiles**: `TileLayer` lacked `noWrap={true}`, and `MapContainer` lacked `minZoom={2}`, `maxBounds={[[-85, -180], [85, 180]]}` and `maxBoundsViscosity={1.0}`. As a result, wide viewports rendered horizontally wrapped copies of the globe while marker coordinates only attached to the central world instance.
+- **Offset tile rendering**: Leaflet containers without size invalidation on resize/render can cache incorrect pixel bounding boxes. Added `MapSizeSync` invoking `map.invalidateSize({ pan: false })` both immediately upon mounting and whenever `ResizeObserver` detects container dimension changes.
+- **Duplicate CDN CSS**: Removed duplicate external CDN `<link rel="stylesheet" href=".../leaflet.css">` from `apps/web/index.html` and centralized Leaflet styling into a single bundled import: `import "leaflet/dist/leaflet.css";` in `InspectionMap.tsx`.
+- **Coordinate order verification (`[lat, lng]`)**:
+  - Implemented `packages/core/src/geo.ts` (`toLatLngTuple`, `isValidLatLng`, `computeMapView`, `WORLD_MAX_BOUNDS`, `SINGLE_PIN_ZOOM = 15`).
+  - Added unit tests in `packages/core/test/geo.test.ts` and `apps/api/test/geo-exif.test.ts` validating that EXIF GPS (including signed decimal degrees like Cali: `3.4516 N, -76.532 W`) and manual pins are strictly ordered as `[latitude, longitude]` for Leaflet (never inverted `[lng, lat]`).
+- **Framing & Auto-fit**: Added `MapAutoFit` component inside `MapContainer`:
+  - When the map contains multiple pins: calls `map.fitBounds(view.bounds, { padding: [48, 48], maxZoom: 15 })`.
+  - When the map contains exactly one pin: centers on the coordinate at `zoom: 15`.
+
+### 2. Verification
+- **Automated headless browser test (`scratch/test-map-pins.mjs`)**:
+  - Tested with 3 geolocated reports at different places (Cali, Bogotá, Medellín).
+  - Confirmed 0 duplicate tiles (`duplicateTileSrcs: 0`, `outOfWorldTiles: 0`), all 4 container corners covered with tiles, pins correctly positioned within < 0.8 km pixel anchor accuracy at zoom 7, responsive auto-refit on resize to 755px width, and single-pin detail view centered at zoom 15 (`pinOffsetFromCenterPx: [0, 0]`).
+- `pnpm typecheck`: Passed (0 errors across `@viaguard/core`, `@viaguard/api`, `@viaguard/web`).
+- `pnpm test`: Passed (51/51 tests passing across workspace).
+- `pnpm build`: Passed cleanly.

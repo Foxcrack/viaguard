@@ -1,25 +1,48 @@
-import React from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import {
   MapContainer,
   TileLayer,
   Marker,
   Popup,
+  useMap,
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
-import { InspectionReport, normalizeInspectionReport } from "@viaguard/core";
+import "leaflet/dist/leaflet.css";
+import {
+  InspectionReport,
+  normalizeInspectionReport,
+  computeMapView,
+  toLatLngTuple,
+  WORLD_MAX_BOUNDS,
+  SINGLE_PIN_ZOOM,
+  type LatLngTuple,
+} from "@viaguard/core";
 import { Link } from "react-router-dom";
 import { Navigation } from "lucide-react";
 
 interface InspectionMapProps {
   reports: InspectionReport[];
-  center?: [number, number];
+  /** Fallback center (Leaflet [lat, lng]) used only when there are no pins. */
+  center?: LatLngTuple;
+  /** Fallback zoom used only when there are no pins. */
   zoom?: number;
   interactiveSelect?: boolean;
   selectedLocation?: { latitude: number; longitude: number } | null;
   onLocationSelect?: (loc: { latitude: number; longitude: number }) => void;
   className?: string;
 }
+
+/** Lowest zoom allowed; together with noWrap + maxBounds this prevents repeated world copies. */
+const MAP_MIN_ZOOM = 2;
+
+/** Padding (px) applied when fitting the map to multiple pins. */
+const FIT_BOUNDS_PADDING: [number, number] = [48, 48];
+
+/** Neutral whole-world fallback view when no pins exist. */
+const WORLD_FALLBACK_CENTER: LatLngTuple = [15, 0];
+
+const NONE_VIEW_KEY = JSON.stringify({ kind: "none" });
 
 const SEVERITY_COLORS = {
   low: "#10b981",
@@ -66,51 +89,178 @@ function LocationPickerEvents({
 }) {
   useMapEvents({
     click(e) {
+      // Clamp longitude into [-180, 180] in case the click lands outside the single world copy.
+      const wrapped = e.latlng.wrap();
       onSelect?.({
-        latitude: Number(e.latlng.lat.toFixed(6)),
-        longitude: Number(e.latlng.lng.toFixed(6)),
+        latitude: Number(wrapped.lat.toFixed(6)),
+        longitude: Number(wrapped.lng.toFixed(6)),
       });
     },
   });
   return null;
 }
 
+/**
+ * Keeps Leaflet's cached container size in sync with the DOM so tiles never render offset:
+ * calls invalidateSize() after mount and whenever the container is resized (layout, sidebar, viewport).
+ */
+function MapSizeSync() {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    let frame = 0;
+    const invalidate = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => map.invalidateSize({ pan: false }));
+    };
+
+    invalidate();
+    const settleTimer = window.setTimeout(invalidate, 250);
+
+    let observer: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(invalidate);
+      observer.observe(container);
+    } else {
+      window.addEventListener("resize", invalidate);
+    }
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(settleTimer);
+      if (observer) observer.disconnect();
+      else window.removeEventListener("resize", invalidate);
+    };
+  }, [map]);
+
+  return null;
+}
+
+/**
+ * Frames the map around its pins: fitBounds (with padding) for several pins,
+ * or centers on a single pin at zoom 15. Re-runs only when the set of pins changes.
+ * In interactive picker mode it does not override the user's zoom on every click.
+ */
+function MapAutoFit({
+  points,
+  interactive,
+}: {
+  points: Array<{ latitude: number; longitude: number }>;
+  interactive: boolean;
+}) {
+  const map = useMap();
+  const view = useMemo(() => computeMapView(points), [points]);
+  const viewKey = JSON.stringify(view);
+  const lastKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const previousKey = lastKeyRef.current;
+    if (previousKey === viewKey) return;
+    lastKeyRef.current = viewKey;
+
+    if (view.kind === "none") return;
+
+    // Make sure Leaflet knows the real container size before computing the framing.
+    map.invalidateSize({ pan: false });
+
+    if (view.kind === "single") {
+      if (interactive && previousKey !== null && previousKey !== NONE_VIEW_KEY) {
+        // User is adjusting the pin by clicking: keep their zoom, only pan if the pin left the view.
+        if (!map.getBounds().contains(view.center)) {
+          map.panTo(view.center);
+        }
+        return;
+      }
+      map.setView(view.center, SINGLE_PIN_ZOOM);
+      return;
+    }
+
+    map.fitBounds(view.bounds, { padding: FIT_BOUNDS_PADDING, maxZoom: SINGLE_PIN_ZOOM });
+  }, [map, view, viewKey, interactive]);
+
+  return null;
+}
+
 export const InspectionMap: React.FC<InspectionMapProps> = ({
   reports,
-  center = [37.7749, -122.4194], // Default to San Francisco
-  zoom = 12,
+  center = WORLD_FALLBACK_CENTER,
+  zoom = MAP_MIN_ZOOM,
   interactiveSelect = false,
   selectedLocation,
   onLocationSelect,
   className = "h-[450px] w-full rounded-xl overflow-hidden border border-border shadow-lg",
 }) => {
-  // Determine center from first report with valid location if available
-  const reportWithLoc = reports.find((r) => r.location);
-  const initialCenter: [number, number] = selectedLocation
-    ? [selectedLocation.latitude, selectedLocation.longitude]
-    : reportWithLoc?.location
-    ? [reportWithLoc.location.latitude, reportWithLoc.location.longitude]
-    : center;
+  // Normalize once and keep only reports with valid coordinates (Leaflet order: [lat, lng]).
+  const pinnedReports = useMemo(
+    () =>
+      reports
+        .map((raw) => normalizeInspectionReport(raw))
+        .map((report) => ({ report, position: toLatLngTuple(report.location) }))
+        .filter(
+          (entry): entry is { report: InspectionReport; position: LatLngTuple } =>
+            entry.position !== null
+        ),
+    [reports]
+  );
+
+  const selectedPosition = toLatLngTuple(selectedLocation);
+  const selectedLat = selectedPosition?.[0];
+  const selectedLng = selectedPosition?.[1];
+
+  const fitPoints = useMemo(() => {
+    const pts = pinnedReports.map(({ position }) => ({
+      latitude: position[0],
+      longitude: position[1],
+    }));
+    if (selectedLat !== undefined && selectedLng !== undefined) {
+      pts.push({ latitude: selectedLat, longitude: selectedLng });
+    }
+    return pts;
+  }, [pinnedReports, selectedLat, selectedLng]);
+
+  // Initial view before MapAutoFit runs (avoids a flash at the fallback location).
+  const initialView = computeMapView(fitPoints);
+  const initialCenter: LatLngTuple =
+    initialView.kind === "single"
+      ? initialView.center
+      : initialView.kind === "bounds"
+      ? [
+          (initialView.bounds[0][0] + initialView.bounds[1][0]) / 2,
+          (initialView.bounds[0][1] + initialView.bounds[1][1]) / 2,
+        ]
+      : center;
+  const initialZoom = initialView.kind === "single" ? SINGLE_PIN_ZOOM : Math.max(zoom, MAP_MIN_ZOOM);
 
   return (
     <div className={`relative ${className}`}>
       <MapContainer
         center={initialCenter}
-        zoom={zoom}
+        zoom={initialZoom}
+        minZoom={MAP_MIN_ZOOM}
+        maxBounds={WORLD_MAX_BOUNDS}
+        maxBoundsViscosity={1.0}
+        worldCopyJump={false}
         scrollWheelZoom={true}
-        style={{ height: "100%", width: "100%", background: "#111827" }}
+        style={{ height: "100%", width: "100%", minHeight: "11rem", background: "#111827" }}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          noWrap={true}
+          bounds={WORLD_MAX_BOUNDS}
+          maxZoom={19}
         />
+
+        <MapSizeSync />
+        <MapAutoFit points={fitPoints} interactive={interactiveSelect} />
 
         {interactiveSelect && <LocationPickerEvents onSelect={onLocationSelect} />}
 
         {/* Selected manual location marker */}
-        {selectedLocation && (
+        {selectedLocation && selectedPosition && (
           <Marker
-            position={[selectedLocation.latitude, selectedLocation.longitude]}
+            position={selectedPosition}
             icon={createCustomPin("#3b82f6")}
           >
             <Popup>
@@ -123,18 +273,14 @@ export const InspectionMap: React.FC<InspectionMapProps> = ({
         )}
 
         {/* Report Pin Markers */}
-        {reports
-          .filter((r) => r.location)
-          .map((rawReport) => {
-            const report = normalizeInspectionReport(rawReport);
-            const loc = report.location!;
+        {pinnedReports.map(({ report, position }) => {
             const pinColor =
               SEVERITY_COLORS[report.severityLevel] || SEVERITY_COLORS.low;
 
             return (
               <Marker
                 key={report.id}
-                position={[loc.latitude, loc.longitude]}
+                position={position}
                 icon={createCustomPin(pinColor)}
               >
                 <Popup className="custom-popup">

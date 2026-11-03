@@ -22,6 +22,7 @@ import {
   getSignalDiscrepancyNote,
   REPORT_LIMITATIONS_TEXT,
   normalizeInspectionReport,
+  isValidLatLng,
 } from "@viaguard/core";
 import {
   understandSceneWithMuseSpark,
@@ -192,7 +193,13 @@ export async function preprocessImage(
   let exifGps: { latitude: number; longitude: number } | undefined;
   try {
     const gpsData = await exifr.gps(buffer);
-    if (gpsData?.latitude && gpsData?.longitude) {
+    // exifr.gps() returns signed decimal degrees ({ latitude, longitude }) with N/S and E/W refs applied.
+    if (
+      gpsData &&
+      Number.isFinite(gpsData.latitude) &&
+      Number.isFinite(gpsData.longitude) &&
+      isValidLatLng(gpsData.latitude, gpsData.longitude)
+    ) {
       exifGps = {
         latitude: Number(gpsData.latitude.toFixed(6)),
         longitude: Number(gpsData.longitude.toFixed(6)),
