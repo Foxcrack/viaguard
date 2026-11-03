@@ -698,3 +698,53 @@ To prepare the repository for testing exclusively on the author's own photos wit
 - `pnpm typecheck`: Passed with 0 errors across all 3 packages (`@viaguard/core`, `@viaguard/api`, `@viaguard/web`).
 - `pnpm test`: All 51 unit and integration tests passing.
 - `pnpm build`: Passed cleanly.
+
+---
+
+## 2026-11-03 – Safe SSE Progress Streaming, Controller Disconnect Protection & Process Resiliency
+
+### 1. Root Cause Analysis
+During live browser inspection testing on user photos, a client disconnect, page reload, or stream completion caused:
+```text
+TypeError [ERR_INVALID_STATE]: Invalid state: Controller is already closed
+  at ReadableStreamDefaultController.enqueue
+  at sendUpdate (apps/api/src/index.ts:122)
+  at Timeout._onTimeout (apps/api/src/index.ts:146)
+```
+- In Node.js WHATWG `ReadableStream`, calling `controller.enqueue(...)` or `controller.close()` after the stream has closed throws `TypeError [ERR_INVALID_STATE]`.
+- Because this call occurred inside an asynchronous `setInterval` callback (`_onTimeout`), the unhandled exception crashed the Node.js API process.
+- All subsequent HTTP requests failed with `ECONNREFUSED` ("Failed to fetch").
+
+### 2. Fixes Implemented (`apps/api/src/index.ts`)
+1. **Safe `sendUpdate`**:
+   - Tracked a per-stream `closed` boolean flag.
+   - Wrapped `controller.enqueue(...)` and `controller.close()` in `try/catch`.
+   - Any enqueue error safely invokes `cleanup("enqueue_failed")` without re-throwing.
+2. **Idempotent `cleanup()` Function**:
+   - Guards against double-execution (`if (closed) return; closed = true;`).
+   - Clears all progress polling timers (`progressTimer`) and keep-alive heartbeats (`heartbeatTimer`).
+   - Unbinds `abort` event listeners from `c.req.raw.signal`.
+   - Closes the controller gracefully inside `try/catch`.
+   - Wired to `ReadableStream.cancel(reason)`, request `signal.addEventListener("abort")`, job completion (`completed` / `failed`), and error states.
+3. **Detached Background Execution Guaranteed**:
+   - The inspection pipeline (`runRoadPipeline` / `runConstructionPipeline`) executes as an independent background Promise. Closing, reloading, or aborting the SSE connection never cancels the pipeline or prevents report persistence in `storage.save(report)`.
+4. **Process-Level Error Handlers (`process.on`)**:
+   - Added global `unhandledRejection` and `uncaughtException` handlers.
+   - Implemented `isNonFatalStreamError` recognizing `ERR_INVALID_STATE`, `ERR_STREAM_PREMATURE_CLOSE`, `ECONNRESET`, `EPIPE`, `AbortError`, and closed-controller messages.
+   - Non-fatal stream/socket errors are logged with sanitized warnings while keeping the server alive.
+   - Added `sanitizeError` to scrub `MODEL_API_KEY`, Bearer tokens, and credential headers from all logs.
+
+### 3. Verification & Live Reproduction
+- **Automated Integration Tests (`apps/api/test/api.test.ts`)**:
+  - `GET /api/jobs/:id/stream streams initial and completed state, then closes cleanly`
+  - `GET /api/jobs/:id/stream handles client abort mid-analysis: server stays alive, timers cleared, report saved`
+  - `isNonFatalStreamError identifies controller closed and connection reset errors`
+  - `sanitizeError strips API keys and credentials from logs`
+- **Live Real-Photo Test**:
+  - Started live road analysis (`POST /api/road/analyze?async=true`).
+  - Connected to `/api/jobs/:id/stream`, received initial chunk, and aborted mid-pipeline (simulating browser reload).
+  - Confirmed `/api/health` returned 200 immediately and throughout execution.
+  - Confirmed background pipeline completed and report `rep-road-1793747754143-d7e1176f` persisted in `GET /api/reports`.
+- `pnpm typecheck`: 0 errors.
+- `pnpm test`: 55 passed (36 in `@viaguard/core` + 19 in `@viaguard/api`).
+- `pnpm build`: Built cleanly.

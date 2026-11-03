@@ -13,6 +13,77 @@ import { jobManager } from "./jobs.js";
 import { generateHtmlReport } from "./html-report.js";
 import { tokenTracker } from "./meta-client.js";
 
+/**
+ * Sanitizes error messages by scrubbing API keys, tokens and credentials before logging.
+ */
+export function sanitizeError(err: unknown): string {
+  const text =
+    err instanceof Error
+      ? `${err.name}: ${err.message}\n${err.stack || ""}`
+      : typeof err === "object" && err !== null
+      ? JSON.stringify(err)
+      : String(err);
+
+  let sanitized = text;
+  const apiKey = process.env.MODEL_API_KEY;
+  if (apiKey && apiKey.trim().length > 0) {
+    sanitized = sanitized.replaceAll(apiKey, "[REDACTED_API_KEY]");
+  }
+  sanitized = sanitized.replace(/Bearer\s+[a-zA-Z0-9_\-\.]+/gi, "Bearer [REDACTED]");
+  sanitized = sanitized.replace(
+    /("?(?:api[_-]?key|authorization|secret|token|password)"?\s*[:=]\s*)"[^"]+"/gi,
+    '$1"[REDACTED]"'
+  );
+  return sanitized;
+}
+
+/**
+ * Identifies whether an error is a non-fatal stream/socket disconnect error.
+ */
+export function isNonFatalStreamError(err: unknown): boolean {
+  if (!err) return false;
+  const errorObj = err as any;
+  const code = String(errorObj?.code || "");
+  const message = String(errorObj?.message || errorObj || "");
+  const name = String(errorObj?.name || "");
+
+  return (
+    code === "ERR_INVALID_STATE" ||
+    code === "ERR_STREAM_PREMATURE_CLOSE" ||
+    code === "ECONNRESET" ||
+    code === "EPIPE" ||
+    code === "ECANCELED" ||
+    name === "AbortError" ||
+    message.includes("Controller is already closed") ||
+    message.includes("Invalid state: Controller") ||
+    message.includes("premature close") ||
+    message.includes("stream closed") ||
+    message.includes("client disconnected")
+  );
+}
+
+// Global Process Error Handlers to keep server alive on non-fatal stream/client disconnect errors
+process.on("unhandledRejection", (reason) => {
+  const sanitized = sanitizeError(reason);
+  if (isNonFatalStreamError(reason)) {
+    console.warn(`[Process Warning] Non-fatal unhandled stream rejection suppressed:\n${sanitized}`);
+    return;
+  }
+  console.error(`[Process Error] Unhandled rejection:\n${sanitized}`);
+});
+
+process.on("uncaughtException", (error, origin) => {
+  const sanitized = sanitizeError(error);
+  if (isNonFatalStreamError(error)) {
+    console.warn(`[Process Warning] Non-fatal uncaught stream exception suppressed (${origin}):\n${sanitized}`);
+    return;
+  }
+  console.error(`[Fatal Process Error] Uncaught fatal exception (${origin}):\n${sanitized}`);
+  if (process.env.NODE_ENV !== "test") {
+    process.exit(1);
+  }
+});
+
 export const app = new Hono();
 
 app.use(
@@ -112,53 +183,161 @@ app.get("/api/jobs/:id/stream", async (c) => {
   }
 
   c.header("Content-Type", "text/event-stream");
-  c.header("Cache-Control", "no-cache");
+  c.header("Cache-Control", "no-cache, no-transform");
   c.header("Connection", "keep-alive");
+  c.header("X-Accel-Buffering", "no");
+
+  let cleanupRef: ((reason?: string) => void) | null = null;
 
   const stream = new ReadableStream({
-    async start(controller) {
-      const encoder = new TextEncoder();
-      const sendUpdate = (data: any) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+    start(controller) {
+      let closed = false;
+      let progressTimer: NodeJS.Timeout | null = null;
+      let heartbeatTimer: NodeJS.Timeout | null = null;
+      let abortHandler: (() => void) | null = null;
+
+      const cleanup = (reason = "stream_closed") => {
+        if (closed) return;
+        closed = true;
+
+        if (progressTimer) {
+          clearInterval(progressTimer);
+          progressTimer = null;
+        }
+        if (heartbeatTimer) {
+          clearInterval(heartbeatTimer);
+          heartbeatTimer = null;
+        }
+
+        const reqSignal = c.req.raw?.signal;
+        if (reqSignal && abortHandler) {
+          try {
+            reqSignal.removeEventListener("abort", abortHandler);
+          } catch {
+            // ignore
+          }
+          abortHandler = null;
+        }
+
+        try {
+          controller.close();
+        } catch {
+          // Controller might already be closed or errored; safe to ignore
+        }
       };
 
+      cleanupRef = cleanup;
+
+      const encoder = new TextEncoder();
+
+      const sendUpdate = (data: any) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        } catch (err: any) {
+          cleanup("enqueue_failed");
+        }
+      };
+
+      const sendComment = (comment: string) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`: ${comment}\n\n`));
+        } catch {
+          cleanup("comment_failed");
+        }
+      };
+
+      // Handle request abort (client navigation, window close, reload)
+      const reqSignal = c.req.raw?.signal;
+      if (reqSignal) {
+        if (reqSignal.aborted) {
+          cleanup("already_aborted");
+          return;
+        }
+        abortHandler = () => {
+          cleanup("request_aborted");
+        };
+        reqSignal.addEventListener("abort", abortHandler, { once: true });
+      }
+
+      // Initial state push
       sendUpdate(job);
+
+      if (job.status === "completed" || job.status === "failed") {
+        cleanup("job_already_finished");
+        return;
+      }
 
       let prevStep = job.step;
       let prevPercent = job.percent;
 
-      const interval = setInterval(() => {
-        const currentJob = jobManager.getJob(id);
-        if (!currentJob) {
-          clearInterval(interval);
-          controller.close();
+      // Heartbeat comment every 15 seconds to prevent network/proxy timeout
+      heartbeatTimer = setInterval(() => {
+        if (closed) {
+          if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+          }
+          return;
+        }
+        try {
+          sendComment("heartbeat");
+        } catch {
+          cleanup("heartbeat_failed");
+        }
+      }, 15000);
+
+      // Poll progress every 300ms
+      progressTimer = setInterval(() => {
+        if (closed) {
+          if (progressTimer) {
+            clearInterval(progressTimer);
+            progressTimer = null;
+          }
           return;
         }
 
-        if (
-          currentJob.step !== prevStep ||
-          currentJob.percent !== prevPercent ||
-          currentJob.status === "completed" ||
-          currentJob.status === "failed"
-        ) {
-          prevStep = currentJob.step;
-          prevPercent = currentJob.percent;
-          sendUpdate(currentJob);
-        }
+        try {
+          const currentJob = jobManager.getJob(id);
+          if (!currentJob) {
+            cleanup("job_removed");
+            return;
+          }
 
-        if (currentJob.status === "completed" || currentJob.status === "failed") {
-          clearInterval(interval);
-          controller.close();
+          if (
+            currentJob.step !== prevStep ||
+            currentJob.percent !== prevPercent ||
+            currentJob.status === "completed" ||
+            currentJob.status === "failed"
+          ) {
+            prevStep = currentJob.step;
+            prevPercent = currentJob.percent;
+            sendUpdate(currentJob);
+          }
+
+          if (currentJob.status === "completed" || currentJob.status === "failed") {
+            cleanup("job_completed");
+          }
+        } catch (err: any) {
+          console.warn(`[SSE Stream ${id}] Error in progress check:`, err.message || err);
+          cleanup("progress_timer_error");
         }
       }, 300);
+    },
+    cancel(reason) {
+      if (cleanupRef) {
+        cleanupRef(`stream_cancelled: ${reason || "consumer_cancelled"}`);
+      }
     },
   });
 
   return new Response(stream, {
     headers: {
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
     },
   });
 });

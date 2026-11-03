@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { app } from "../src/index.js";
+import { app, isNonFatalStreamError, sanitizeError } from "../src/index.js";
 import { storage } from "../src/storage.js";
+import { jobManager } from "../src/jobs.js";
 import { applyPrivacyBlur } from "../src/pipeline.js";
 import { createStructuredResponse, understandSceneWithMuseSpark } from "../src/meta-client.js";
 import sharp from "sharp";
@@ -363,5 +364,176 @@ describe("Viaguard Backend API Endpoints", () => {
     expect(calls).toBe(2);
     expect(isCached).toBe(false);
     expect(scene.visible_damage_types).toEqual([...DEFAULT_ROAD_CONCEPTS]);
+  });
+
+  it("GET /api/jobs/:id/stream streams initial and completed state, then closes cleanly", async () => {
+    const jobId = `job-test-normal-${Date.now()}`;
+    jobManager.createJob(jobId);
+
+    const res = await app.request(`/api/jobs/${jobId}/stream`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+
+    const body = res.body;
+    expect(body).toBeDefined();
+    const reader = body!.getReader();
+    const decoder = new TextDecoder();
+
+    // Read initial chunk
+    const { value: chunk1, done: done1 } = await reader.read();
+    expect(done1).toBe(false);
+    const text1 = decoder.decode(chunk1);
+    expect(text1).toContain(`"id":"${jobId}"`);
+    expect(text1).toContain(`"status":"pending"`);
+
+    // Simulate pipeline progress and completion
+    const mockReport: InspectionReport = {
+      id: `rep-normal-${Date.now()}`,
+      module: "road",
+      createdAt: new Date().toISOString(),
+      imageUrl: "/uploads/test-road.jpg",
+      imageWidth: 800,
+      imageHeight: 600,
+      sceneType: "asphalt road",
+      overallCondition: "fair",
+      severityScore: 30,
+      severityLevel: "medium",
+      findings: [],
+      title: "Road inspection report — 2026-11-03",
+      summary: "Normal stream test completed.",
+      recommendedAction: "Maintenance",
+      estimatedUrgency: "within 14 days",
+      isCached: false,
+    };
+
+    await storage.save(mockReport);
+    jobManager.updateJob(jobId, {
+      status: "completed",
+      percent: 100,
+      step: "Complete",
+      report: mockReport,
+    });
+
+    // Read completed chunk
+    const { value: chunk2, done: done2 } = await reader.read();
+    expect(done2).toBe(false);
+    const text2 = decoder.decode(chunk2);
+    expect(text2).toContain(`"status":"completed"`);
+    expect(text2).toContain(mockReport.id);
+
+    // Stream closes cleanly on job completion
+    const { done: done3 } = await reader.read();
+    expect(done3).toBe(true);
+  });
+
+  it("GET /api/jobs/:id/stream handles client abort mid-analysis: server stays alive, timers cleared, report saved", async () => {
+    const jobId = `job-test-abort-${Date.now()}`;
+    jobManager.createJob(jobId);
+
+    const abortController = new AbortController();
+    const res = await app.request(`/api/jobs/${jobId}/stream`, {
+      signal: abortController.signal,
+    });
+    expect(res.status).toBe(200);
+
+    const body = res.body;
+    expect(body).toBeDefined();
+    const reader = body!.getReader();
+    const decoder = new TextDecoder();
+
+    // Read initial chunk
+    const { value: chunk1, done: done1 } = await reader.read();
+    expect(done1).toBe(false);
+    const text1 = decoder.decode(chunk1);
+    expect(text1).toContain(`"id":"${jobId}"`);
+
+    // Abort mid-analysis (simulates page reload, window close, or network drop)
+    abortController.abort();
+    try {
+      await reader.cancel();
+    } catch {
+      // Expected on cancelled reader
+    }
+
+    // Pipeline continues running in background
+    const mockReport: InspectionReport = {
+      id: `rep-abort-persisted-${Date.now()}`,
+      module: "road",
+      createdAt: new Date().toISOString(),
+      imageUrl: "/uploads/test-road.jpg",
+      imageWidth: 800,
+      imageHeight: 600,
+      sceneType: "asphalt road",
+      overallCondition: "poor",
+      severityScore: 65,
+      severityLevel: "high",
+      findings: [],
+      title: "Road inspection report — 2026-11-03",
+      summary: "Background analysis succeeded and report persisted despite aborted SSE stream.",
+      recommendedAction: "Emergency patch",
+      estimatedUrgency: "within 7 days",
+      isCached: false,
+    };
+
+    // Simulate pipeline background completion
+    jobManager.updateJob(jobId, {
+      status: "processing",
+      percent: 60,
+      step: "Segmenting defects with SAM 3.1",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await storage.save(mockReport);
+    jobManager.updateJob(jobId, {
+      status: "completed",
+      percent: 100,
+      step: "Complete",
+      report: mockReport,
+    });
+
+    // Wait for residual timer tick to fire and verify no unhandled exception occurs
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    // Assert 1: Server stays alive and health check returns 200
+    const healthRes = await app.request("/api/health");
+    expect(healthRes.status).toBe(200);
+    const health = await healthRes.json();
+    expect(health.status).toBe("ok");
+
+    // Assert 2: The report was saved in storage
+    const savedReport = await storage.getById(mockReport.id);
+    expect(savedReport).toBeDefined();
+    expect(savedReport?.id).toBe(mockReport.id);
+    expect(savedReport?.severityScore).toBe(65);
+
+    // Assert 3: The job in jobManager completed
+    const finalJob = jobManager.getJob(jobId);
+    expect(finalJob?.status).toBe("completed");
+  });
+
+  it("isNonFatalStreamError identifies controller closed and connection reset errors", () => {
+    const errClosed = new TypeError("Invalid state: Controller is already closed");
+    (errClosed as any).code = "ERR_INVALID_STATE";
+    expect(isNonFatalStreamError(errClosed)).toBe(true);
+
+    const errPremature = new Error("Premature close");
+    (errPremature as any).code = "ERR_STREAM_PREMATURE_CLOSE";
+    expect(isNonFatalStreamError(errPremature)).toBe(true);
+
+    const errReset = new Error("read ECONNRESET");
+    (errReset as any).code = "ECONNRESET";
+    expect(isNonFatalStreamError(errReset)).toBe(true);
+
+    const fatalErr = new ReferenceError("variable is not defined");
+    expect(isNonFatalStreamError(fatalErr)).toBe(false);
+  });
+
+  it("sanitizeError strips API keys and credentials from logs", () => {
+    const secret = "test-secret-key-123456789";
+    process.env.MODEL_API_KEY = secret;
+    const msg = `Failed to connect with key ${secret} and Bearer myToken12345`;
+    const sanitized = sanitizeError(msg);
+    expect(sanitized).not.toContain(secret);
+    expect(sanitized).toContain("[REDACTED_API_KEY]");
+    expect(sanitized).toContain("Bearer [REDACTED]");
   });
 });

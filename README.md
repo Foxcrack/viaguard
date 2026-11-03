@@ -191,7 +191,7 @@ pnpm dev
 ```bash
 pnpm test
 ```
-Runs 51 Vitest tests validating concept sanitizing, confidence filtering, minimum mask area (`MIN_AREA_RATIO`), cross-concept NMS, area-dominant severity scoring & breakdown, separated SAM vs. Muse Spark signals, neutral titles, deterministic urgency mapping, geospatial Leaflet coordinate ordering, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
+Runs 55 Vitest tests validating safe SSE streaming & client abort resiliency, concept sanitizing, confidence filtering, minimum mask area (`MIN_AREA_RATIO`), cross-concept NMS, area-dominant severity scoring & breakdown, separated SAM vs. Muse Spark signals, neutral titles, deterministic urgency mapping, geospatial Leaflet coordinate ordering, construction diffing, Zod schemas, privacy blur, opt-in Demo Mode honesty, and REST endpoints.
 
 ### 6. Run Headless CLI Inspection
 ```bash
