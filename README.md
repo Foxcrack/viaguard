@@ -17,6 +17,12 @@
 
 ---
 
+## 📺 Demo
+
+- **Video Walkthrough**: [3-minute Demonstration & Technical Tour](https://youtu.be/placeholder) *(placeholder — replace with published video URL)*
+
+---
+
 ## 💡 Overview
 
 Municipal public works teams often receive street and site photos from inspectors or residents, and manually reviewing images, estimating affected areas, and drafting repair notes can be slow and manual.
@@ -44,7 +50,7 @@ Viaguard depends directly on Meta's models through the **Meta Model API** (`http
 
 ```mermaid
 flowchart TD
-    Photo["Input Photo (EXIF GPS + JPEG/PNG/WebP)"] --> Preprocess["1. Preprocess & Privacy Blur (Resize <= 1600px, EXIF GPS, SAM 3.1 Person/Plate Blur)"]
+    Photo["Input Photo (EXIF GPS + JPEG/PNG/WebP)"] --> Preprocess["1. Preprocess & Privacy Blur (Resize max 1600px, EXIF GPS, SAM 3.1 Person/Plate Blur)"]
     Preprocess --> MuseScene["2. Muse Spark Scene Understanding (muse-spark-1.3 Structured JSON)"]
     MuseScene --> SAMSeg["3. SAM 3.1 Streaming Segmentation (1-Bit Masks via @meta-sam/parser)"]
     SAMSeg --> FilterNMS["4. Post-Processing & Filtering (Plain-Noun Sanitizer, Confidence, Min Area, Mask/Box NMS)"]
@@ -220,12 +226,29 @@ pnpm analyze:sample ./my-photos/site-before.jpg ./my-photos/site-after.jpg
 
 ## 🧪 Validation Status
 
-- **Road Damage Module**: Evaluated live against Meta Model APIs (`sam-3.1` and `muse-spark-1.3`) using 10 original street photos taken in Cali, Colombia (`my-photos/`, kept gitignored for privacy). Split 50/50 into Group A (tuning: `1.jpg`–`5.jpg`) and Group B (verification: `6.jpg`–`10.jpg`). Key findings:
-  - Healthy road test photo (`6.jpg`, clean intersection) preserved **0 false positives** after minimum size filtering (`MIN_AREA_RATIO = 0.0005`), correctly scoring 0/100 (low severity).
-  - Potholes and discrete cracks were reliably localized across both groups with privacy blur active.
-  - **Diffuse Distress Limitation**: On continuous alligator cracking without discrete boundaries (`3.jpg`), SAM 3.1 returned 0 raw instance masks even on closer crops. In Viaguard, this is handled transparently: Muse Spark correctly identifies the visual condition as `poor`, the separated score badge reflects `0/100 (low)`, the signal mismatch note alerts inspectors, and the system enforces an honest summary: *"No discrete defects were measured by SAM. Manual inspection recommended."*
-- **Construction Progress Module**: Works end-to-end against the live Meta Model API (`muse-spark-1.3` and `sam-3.1`), but has so far only been tested during development on synthetic illustrations and on edited pairs — NOT on real before/after field photos.
-- **Sample Images Directory (`apps/web/public/samples/`)**: Empty placeholder directory. Users and inspectors can place their own photos here to test the inspection pipeline.
+### Road Damage Module (Evaluated on Author's Photos)
+Evaluated live against Meta Model APIs (`sam-3.1` and `muse-spark-1.3`) using 10 original street photos taken in Cali, Colombia (`my-photos/`, kept private and gitignored). Because ground-truth labels in `my-photos/ground-truth.csv` have not yet been calibrated against ground-level surveyor measurements, the evaluation results below are **provisional**:
+
+| Photo | Damage Present (Provisional) | Detections (SAM 3.1) | Measured Severity (SAM) | Visual Condition (Muse Spark) |
+|---|---|---|---|---|
+| `1.jpg` | No | 0 | 0/100 (low) | Fair |
+| `2.jpg` | Yes | 2 | 6/100 (low) | Poor |
+| `3.jpg` | Yes | 0* | 0/100 (low) | Poor |
+| `4.jpg` | Yes | 8 | 37/100 (medium) | Poor |
+| `5.jpg` | Yes | 1 | 4/100 (low) | Fair |
+| `6.jpg` | No | 0 | 0/100 (low) | Good |
+| `7.jpg` | Yes | 2 | 4/100 (low) | Fair |
+| `8.jpg` | Yes | 2 | 9/100 (low) | Poor |
+| `9.jpg` | Yes | 3 | 3/100 (low) | Fair |
+| `10.jpg` | Yes | 1 | 5/100 (low) | Fair |
+
+*\*Note on `3.jpg` (Diffuse Distress Limitation)*: SAM 3.1 returned 0 raw instance masks on `3.jpg` because continuous alligator cracking covered the travel lane without discrete closed polygon boundaries. Viaguard surfaces this condition transparently: Muse Spark assigns a visual condition of `poor`, the measured severity badge shows `0/100 (low)`, the signal mismatch note alerts inspectors, and the system enforces an honest summary: *"No discrete defects were measured by SAM. Visual inspection indicates poor condition. Manual inspection recommended."*
+
+- **Zero-False-Positive Verification**: The healthy intersection photo (`6.jpg`) produced **0 false positives** after minimum-size filtering (`MIN_AREA_RATIO = 0.0005`), correctly scoring `0/100 (low)`.
+- **Hazard-Aware Preservation**: In `8.jpg`, hazard-aware NMS ensured that overlapping fixture masks (`manhole cover`) did not suppress genuine pothole defects.
+
+### Construction Progress Module
+Works end-to-end against the live Meta Model API (`muse-spark-1.3` and `sam-3.1`), but has so far only been tested during development on synthetic illustrations and on edited pairs — **NOT** on real before/after field photos.
 
 ---
 
