@@ -2,6 +2,10 @@
 
 > **Turn a phone photo of a street or a construction site into a structured inspection report for city teams.**
 
+## 📺 Demo
+
+Demo video (2:15 min): https://www.youtube.com/watch?v=pgNsmuAlP-E
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![pnpm workspace](https://img.shields.io/badge/pnpm-12.3-orange.svg)](https://pnpm.io/)
@@ -14,12 +18,6 @@
 **Viaguard was created from scratch during the Meta Global AI Developer Hackathon (October 27 – November 4, 2026)** under the **Indie Developer** track (**Theme: Build for Your World**). Every commit, package, interface, and test in this repository was authored during the official hackathon window.
 
 - **Official Hackathon Submission Portal**: https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit
-
----
-
-## 📺 Demo
-
-- **Video Walkthrough**: [3-minute Demonstration & Technical Tour](https://youtu.be/placeholder) *(placeholder — replace with published video URL)*
 
 ---
 
@@ -227,28 +225,31 @@ pnpm analyze:sample ./my-photos/site-before.jpg ./my-photos/site-after.jpg
 ## 🧪 Validation Status
 
 ### Road Damage Module (Evaluated on Author's Photos)
-Evaluated live against Meta Model APIs (`sam-3.1` and `muse-spark-1.3`) using 10 original street photos taken in Cali, Colombia (`my-photos/`, kept private and gitignored). Because ground-truth labels in `my-photos/ground-truth.csv` have not yet been calibrated against ground-level surveyor measurements, the evaluation results below are **provisional**:
+Evaluated live against Meta Model APIs (`sam-3.1` and `muse-spark-1.3`) using **N = 10** unique street photos taken by the author in Cali, Colombia (`my-photos/`, kept private and gitignored):
+- **Photos with at least one SAM detection**: **7 / 10** (70%)
+- **Photos with zero SAM detections**: **3 / 10** (30%)
+- **Ground-Truth Labeling**: Damage ground truth not formally labeled in `my-photos/ground-truth.csv`.
 
-| Photo | Damage Present (Provisional) | Detections (SAM 3.1) | Measured Severity (SAM) | Visual Condition (Muse Spark) |
-|---|---|---|---|---|
-| `1.jpg` | No | 0 | 0/100 (low) | Fair |
-| `2.jpg` | Yes | 2 | 6/100 (low) | Poor |
-| `3.jpg` | Yes | 0* | 0/100 (low) | Poor |
-| `4.jpg` | Yes | 8 | 37/100 (medium) | Poor |
-| `5.jpg` | Yes | 1 | 4/100 (low) | Fair |
-| `6.jpg` | No | 0 | 0/100 (low) | Good |
-| `7.jpg` | Yes | 2 | 4/100 (low) | Fair |
-| `8.jpg` | Yes | 2 | 9/100 (low) | Poor |
-| `9.jpg` | Yes | 3 | 3/100 (low) | Fair |
-| `10.jpg` | Yes | 1 | 5/100 (low) | Fair |
+| Photo # | SAM Detections | Measured Severity (SAM) | Visual Condition (Muse Spark) |
+|:---:|:---:|:---:|:---:|
+| 1 | 0 | 0/100 (low) | Fair |
+| 2 | 2 | 6/100 (low) | Poor |
+| 3 | 0* | 0/100 (low) | Poor |
+| 4 | 8 | 37/100 (medium) | Poor |
+| 5 | 1 | 4/100 (low) | Fair |
+| 6 | 0 | 0/100 (low) | Good |
+| 7 | 2 | 4/100 (low) | Fair |
+| 8 | 2 | 9/100 (low) | Poor |
+| 9 | 3 | 3/100 (low) | Fair |
+| 10 | 1 | 5/100 (low) | Fair |
 
-*\*Note on `3.jpg` (Diffuse Distress Limitation)*: SAM 3.1 returned 0 raw instance masks on `3.jpg` because continuous alligator cracking covered the travel lane without discrete closed polygon boundaries. Viaguard surfaces this condition transparently: Muse Spark assigns a visual condition of `poor`, the measured severity badge shows `0/100 (low)`, the signal mismatch note alerts inspectors, and the system enforces an honest summary: *"No discrete defects were measured by SAM. Visual inspection indicates poor condition. Manual inspection recommended."*
+*\*Note on Photo 3 (Diffuse Distress Limitation)*: SAM 3.1 returned 0 raw instance masks on Photo 3 because continuous alligator cracking covered the travel lane without discrete closed polygon boundaries. SAM can miss diffuse surface wear, so results are conservative. Viaguard surfaces this condition transparently: Muse Spark rates the visual condition as `poor`, the measured severity badge displays `0/100 (low)`, the signal mismatch note alerts inspectors, and the system enforces an honest summary: *"No discrete defects were measured by SAM. Visual inspection indicates poor condition. Manual inspection recommended."*
 
-- **Zero-False-Positive Verification**: The healthy intersection photo (`6.jpg`) produced **0 false positives** after minimum-size filtering (`MIN_AREA_RATIO = 0.0005`), correctly scoring `0/100 (low)`.
-- **Hazard-Aware Preservation**: In `8.jpg`, hazard-aware NMS ensured that overlapping fixture masks (`manhole cover`) did not suppress genuine pothole defects.
+- **Zero-False-Positive Baseline (Photo 6)**: The clean intersection photo produced 0 false positives after minimum-size filtering (`MIN_AREA_RATIO = 0.0005`), scoring `0/100 (low)`.
+- **Hazard-Aware Preservation (Photo 8)**: Hazard-aware NMS ensured that overlapping fixture masks (`manhole cover`) did not suppress genuine pothole defects.
 
 ### Construction Progress Module
-Works end-to-end against the live Meta Model API (`muse-spark-1.3` and `sam-3.1`), but has so far only been tested during development on synthetic illustrations and on edited pairs — **NOT** on real before/after field photos.
+The construction module is not validated on real field photos (tested only on synthetic and edited images). Comparative diffing measures relative area change from the camera viewpoint against live Meta Model API (`muse-spark-1.3` and `sam-3.1`). SAM can miss diffuse surface wear, so results are conservative.
 
 ---
 

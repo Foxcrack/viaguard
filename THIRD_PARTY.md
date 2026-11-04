@@ -95,3 +95,10 @@ SOFTWARE.
 
 ## Map Tiles & Cartography
 - **OpenStreetMap**: Map data and tile rendering © OpenStreetMap contributors, licensed under the Open Database License (ODbL).
+
+
+---
+
+## Photographic Assets & Input Data
+- **No Redistribution of Private Photos**: The author's personal field test photos (`my-photos/`) and inspection uploads (`apps/api/uploads/`) are strictly gitignored and are not redistributed in this repository.
+- **No Bundled Third-Party Photography**: This repository distributes no third-party photographic assets. Placeholder sample directories remain empty.
