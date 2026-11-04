@@ -4,37 +4,35 @@
 **Track:** Indie Developer  
 **Theme:** Build for Your World  
 **Repository:** https://github.com/Foxcrack/viaguard  
+**Demo Video (2:15 min):** https://www.youtube.com/watch?v=pgNsmuAlP-E  
 **License:** MIT  
 
 ---
 
-## 1. Project Description (150 Words)
+## 1. Project Description (Official Portal Short Description)
 
-Municipal public works agencies often deal with manual infrastructure inspections. Citizens report potholes, roadbed deterioration, and construction issues, and converting smartphone photos into prioritized repair notes can be slow and manual.
-
-**Viaguard** is a civic infrastructure inspection tool powered directly by Meta's AI models. Using **SAM 3.1**, Viaguard performs 1-bit streaming segmentation, calculating relative frame area percentages and vector boundaries of potholes, cracks, and structural site elements. Using **Muse Spark**, Viaguard provides structured scene reasoning, comparative construction progression analysis, and municipal work-order narratives.
-
-With automatic EXIF GPS geolocation, an interactive OpenStreetMap civic dashboard, an area-dominant deterministic severity engine (0–100) clearly separated from overall visual condition, default-on pedestrian and license-plate privacy blurring, and printable HTML/PDF reports, Viaguard turns smartphone street and site photos into transparent, actionable municipal inspection reports.
+Viaguard turns phone photos of streets into geolocated, severity-scored inspection reports for city teams. Muse Spark understands the scene, SAM 3.1 segments the defects, and deterministic code computes severity and urgency. Privacy blur on pedestrians and license plates is on by default. Tested on 10 photos taken in Cali, Colombia: SAM detected at least one defect in 7 and none in 3; results are conservative and diffuse wear can be missed. A secondary construction before/after module is included but not validated on real field photos.
 
 ---
 
 ## 2. What Was Built During the Hackathon
 
-Every line of code, architecture diagram, and test in this repository was built from scratch between **October 27, 2026, and November 4, 2026**:
+Everything in the repository, from the first commit on Oct 29, 2026. Built solo with an AI coding agent that I directed and tested.
+
 - **Monorepo Architecture**: Clean `pnpm` workspace dividing `@viaguard/core`, `@viaguard/api`, and `@viaguard/web`.
 - **Meta Model API Client**: Native OpenAI SDK Responses API integration with Meta's endpoint (`https://api.meta.ai/v1`), strict `json_schema` structured output (`text.format`), token usage tracking, and exponential backoff retry.
-- **Official SAM Parser & Post-Processing**: Deep integration of `@meta-sam/parser` (`parseImageStream`, `decodeMaskToRaster`, and `decodeMaskToSVGPath`) paired with plain-noun concept sanitizing, per-concept confidence thresholds, minimum mask area filtering (`MIN_AREA_RATIO = 0.15%`), and cross-concept pixel-mask Non-Maximum Suppression (`IoU > 0.5`).
-- **Separated Signals & Deterministic Severity Engine**: Area- and largest-defect-dominant formula (`packages/core/src/scoring.ts`) exposing full score breakdowns, paired with neutral report titles, deterministic repair urgency mapping (`within 30 days` / `within 14 days` / `within 7 days` / `immediate`), and explicit separation between **`Measured severity (SAM)`** and **`Visual condition (Muse Spark)`**.
-- **Geospatial Mapping**: OpenStreetMap / Leaflet integration with severity-coded pins and auto-populated camera EXIF GPS coordinates (plus browser/manual pin support).
+- **Official SAM Parser & Post-Processing**: Deep integration of `@meta-sam/parser` (`parseImageStream`, `decodeMaskToRaster`, and `decodeMaskToSVGPath`) paired with plain-noun concept sanitizing, per-concept confidence thresholds (`pothole`: 0.5, `crack`: 0.5, default: 0.6), minimum mask area filtering (`MIN_AREA_RATIO = 0.05%`), hazard-aware preservation, and cross-concept pixel-mask Non-Maximum Suppression (`IoU > 0.5`).
+- **Separated Signals & Deterministic Severity Engine**: Area- and largest-defect-dominant formula (`packages/core/src/scoring.ts`) exposing full score breakdowns, paired with neutral report titles, deterministic repair urgency mapping (`within 30 days` / `within 14 days` / `within 7 days` / `immediate`), honest zero-finding report text enforcement, and explicit separation between **`Measured severity (SAM)`** and **`Visual condition (Muse Spark)`**.
+- **Geospatial Mapping**: OpenStreetMap / Leaflet integration with severity-coded pins, auto-populated camera EXIF GPS coordinates, bounded views, and responsive auto-fitting.
 - **Comparative Construction Diffing**: Quantitative element delta tracker comparing BEFORE and AFTER site photos with an interactive draggable `BeforeAfterSlider` and `Progress Index`.
 - **Default-On Civic Privacy Protection**: Automated SAM 3.1 segmentation (`"person"`, `"license plate"`) and 2-stage pixel mosaic + Gaussian blurring enabled ON by default (`Privacy blur: on`) directly on stored uploads.
-- **Testing**: 41 automated Vitest unit and integration tests (`28` in `@viaguard/core` + `13` in `@viaguard/api`) covering filtering, NMS, scoring breakdowns, signal separation, urgency mapping, construction diffing, Zod schemas, API routes, opt-in Demo Mode honesty, and privacy blur.
+- **Testing**: 58 automated Vitest unit and integration tests (`39` in `@viaguard/core` + `19` in `@viaguard/api`) covering filtering, NMS, scoring breakdowns, signal separation, honest report texts, urgency mapping, construction diffing, Zod schemas, safe SSE streaming, API routes, opt-in Demo Mode honesty, and privacy blur.
 
 ---
 
 ## 3. How Meta's Models Are Used
 
-Viaguard depends strictly on Meta's models through the official Meta Model API (`https://api.meta.ai/v1`):
+SAM 3.1 (Meta Model API) segments potholes, cracks, pedestrians and license plates with streaming mask output. Muse Spark 1.3 does structured scene understanding and writes the repair recommendation from measured data only.
 
 ### `sam-3.1` (Segmentation Model)
 - Invoked via the Responses API with `stream: true`.
@@ -45,7 +43,7 @@ Viaguard depends strictly on Meta's models through the official Meta Model API (
 ### `muse-spark-1.3` (Reasoning & Vision Model)
 - **Scene Understanding**: Inspects uploaded images via strict Responses API `json_schema` output to classify scene type, assess `overall_condition` (`good` / `fair` / `poor` / `critical`), and suggest plain-noun target concepts for SAM 3.1.
 - **Construction Diff Reasoning**: Interprets BEFORE and AFTER element count and area deltas alongside the `AFTER` site image to distinguish structural progression from debris or crack accumulation.
-- **Municipal Report Authoring**: Receives the filtered SAM measurements and the code-determined urgency timeframe as fixed inputs, authoring concise repair directives and a single-sentence visual condition explanation without inventing titles or urgency windows.
+- **Municipal Report Authoring**: Receives the filtered SAM measurements and the code-determined urgency timeframe as fixed inputs, authoring concise repair directives and a single-sentence visual condition explanation without inventing defect counts or titles.
 
 ---
 
@@ -82,5 +80,5 @@ Viaguard depends strictly on Meta's models through the official Meta Model API (
 - [x] **No Secrets Committed**: `.env` is strictly gitignored; full `git log -p` history verified clean.
 - [x] **Meta Models Verified**: Strictly powered by `sam-3.1` and `muse-spark-1.3` via `https://api.meta.ai/v1`.
 - [x] **Honest Live Mode & No Bundled Fake Cache**: Zero pre-cached responses are shipped in the repo (`data/` is gitignored). Live API mode runs by default and never falls back silently; opt-in Demo Mode only replays responses locally recorded by the user via `pnpm record:demo` with a visible `"Replaying cached real responses"` banner.
-- [x] **Tests Passing**: 41 automated unit and integration tests passing (`pnpm test`).
+- [x] **Tests Passing**: 58 automated unit and integration tests passing (`pnpm test`).
 - [x] **Submission Portal**: Official submission via https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit before November 4, 2026, 9:00 PM ET.
